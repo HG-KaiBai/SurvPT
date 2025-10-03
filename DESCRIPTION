@@ -1,11 +1,11 @@
 Package: SurvPT
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Estimate the Survival Function from Interval Censored Data by Polya Tree
 Version: 0.1.0
 Authors@R: c(
     person(
-      "Jane", "Doe",
-      email = "jane@example.com",
+      "Yixing", "Zhao",
+      email = "y679zhao@uwaterloo.ca",
       role = c("aut", "cre")
     )
   )
