@@ -16,3 +16,5 @@ Encoding: UTF-8
 LazyData: true
 Imports: Rcpp (>= 1.1.0)
 LinkingTo: Rcpp
+URL: https://github.com/HG-KaiBai/SurvPT
+BugReports: https://github.com/HG-KaiBai/SurvPT/issues
