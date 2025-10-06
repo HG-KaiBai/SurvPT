@@ -1,4 +1,4 @@
-test_data = data_ic(seed = 123, n = 200, K = 1, Lambda = 0.12, q = 0.3)
+test_data = data_cs(seed = 123, n = 200, K = 1, Lambda = 0.12, q = 0.3)
 
 # Try calling the function with basic parameters
 tryCatch({

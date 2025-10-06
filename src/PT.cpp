@@ -51,9 +51,10 @@ PT::PT(const mat X, const int prior, const vec support, const int max_M, const v
     posterior_probs = vec(NODES_NUM, fill::zeros);
     posterior_probs(0) = 1.0; // root node starts with probability 1
 
+    new_posterior_probs = vec(NODES_NUM, fill::zeros);
+    new_posterior_probs(0) = 1.0; // root node starts with probability 1
+
     init();
-
-
 }
 
 void PT::init() {
@@ -175,9 +176,9 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
     }
 }
 
-double PT::init_individual_allocation(double left_obs, double right_obs, double left_bound, double right_bound) {
-    double joint_left = max(left_obs, left_bound);
-    double joint_right = min(right_obs, right_bound);
+double PT::init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
+    double joint_left = max(left_obs, left_node);
+    double joint_right = min(right_obs, right_node);
     if (prior == 1) { // Uniform
         double width_obs;
         if (arma::is_finite(right_obs)){
@@ -194,7 +195,7 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         if (width_obs > SMALL_VALUE) {
             return joint_width / width_obs;
         } else {
-            return 1.0;
+            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else if (prior == 2) { // Exponential
         const double lambda = prior_params(0);
@@ -212,7 +213,7 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         if (denominator > SMALL_VALUE) {
             return numerator / denominator;
         } else {
-            return 1.0;
+            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else if (prior == 3) { // Weibull
         const double lambda = prior_params(0);
@@ -231,12 +232,126 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         if (denominator > SMALL_VALUE) {
             return numerator / denominator;
         } else {
-            return 1.0;
+            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else {
         Rcpp::stop("Invalid prior type.");
     }
     return 0.0; // unreachable, quiets some compilers
+}
+
+void PT::re_allocation() {
+    for (int i = 0; i < NODES_NUM; i++) {
+        int level = node_levels(i);
+        if (level < max_M) {
+            int left_child = 2 * i + 1;
+            int right_child = 2 * i + 2;
+
+            // allocate observations to children
+            update_allocations(i, left_child, right_child);
+
+            // posterior probabilities (initially set to prior probabilities)
+            double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child);
+            if (total > SMALL_VALUE) {
+                new_posterior_probs(left_child) = ((alpha(left_child) + n_obs_allocated(left_child)) / total) * new_posterior_probs(i);
+                new_posterior_probs(right_child) = ((alpha(right_child) + n_obs_allocated(right_child)) / total) * new_posterior_probs(i);
+            } else {
+                new_posterior_probs(left_child) = 0.5 * new_posterior_probs(i);
+                new_posterior_probs(right_child) = 0.5 * new_posterior_probs(i);
+            }
+        }
+    }
+    posterior_probs = new_posterior_probs;
+}
+
+void PT::update_allocations(int parent, int left_child, int right_child) {
+    // reset allocations for children
+    in_node_obs.row(left_child).zeros();
+    in_node_obs.row(right_child).zeros();
+    n_obs_allocated(left_child) = 0.0;
+    n_obs_allocated(right_child) = 0.0;
+
+    // indices of observations allocated to the parent node
+    arma::uvec parent_idx = arma::find(in_node_obs.row(parent) == 1.0);
+
+    for (arma::uword k = 0; k < parent_idx.n_elem; ++k) {
+        const arma::uword obs = parent_idx(k);
+        const double left_obs = X(obs, 0);
+        const double right_obs = X(obs, 1);
+
+        if (allocated == 1) {
+            // update for left child
+            if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
+                in_node_obs(left_child, obs) = 1.0;
+                n_obs_allocated(left_child) += update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+            }
+
+            // update for right child
+            if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
+                in_node_obs(right_child, obs) = 1.0;
+                n_obs_allocated(right_child) += update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+            }
+        } else if (allocated == 0) {
+            // hard allocation for MW method
+            if (left_obs < right_bound(left_child) && right_obs > left_bound(left_child)) {
+                in_node_obs(left_child, obs) = 1.0;
+                n_obs_allocated(left_child) += 1.0;
+            }
+            if (left_obs < right_bound(right_child) && right_obs > left_bound(right_child)) {
+                in_node_obs(right_child, obs) = 1.0;
+                n_obs_allocated(right_child) += 1.0;
+            }
+        } else {
+            Rcpp::stop("Invalid allocation type.");
+        }
+    }
+    if (allocated == 1){
+    // check for sum of allocations
+        if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
+            std::cout << "Parent node: " << n_obs_allocated(parent) << ", Left child: " << n_obs_allocated(left_child) << ", Right child: " << n_obs_allocated(right_child) << std::endl;
+            Rcpp::stop("Sum of allocations exceeds parent sample size.");
+        }
+    }
+}
+
+double PT::update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
+    // Update individual allocation based on the terminal nodes and previous posterior probabilities
+    double joint_left = max(left_obs, left_node);
+    double joint_right = min(right_obs, right_node);
+    double p_joint = 0.0;
+    double p_data = 0.0;
+
+    // Loop over all terminal nodes
+    for (arma::uword t = 0; t < terminal_nodes.n_rows; ++t) {
+        int node = static_cast<int>(terminal_nodes(t));
+        double node_left = left_bound(node);
+        double node_right = (arma::is_finite(right_bound(node))) ? right_bound(node) : 2 * largest_obs; // handle infinite right bound
+
+        // Compute overlap between [joint_left, joint_right] and [node_left, node_right]
+        double overlap_left = std::max(joint_left, node_left);
+        double overlap_right = std::min(joint_right, node_right);
+
+        if (overlap_left < overlap_right) {
+            p_joint += (overlap_right - overlap_left) / (node_right - node_left) * posterior_probs(node);
+        }
+
+        // Compute overlap between [left_obs, right_obs] and [node_left, node_right]
+        double obs_overlap_left = std::max(left_obs, node_left);
+        double obs_overlap_right = std::min(right_obs, node_right);
+
+        if (obs_overlap_left < obs_overlap_right) {
+            p_data += (obs_overlap_right - obs_overlap_left) / (node_right - node_left) * posterior_probs(node);
+        }
+    }
+
+    // Avoid division by zero
+    if (p_data > SMALL_VALUE) {
+        return p_joint / p_data;
+    } else {
+        return (right_node != left_obs) ? 1.0 : 0.0;
+    }
+
+    return 0.0;
 }
 
 List PT::output() {
@@ -254,4 +369,5 @@ List PT::output() {
 void PT::clear(){
     // clear all member variables
     in_node_obs.clear();
+    new_posterior_probs.clear();
 }

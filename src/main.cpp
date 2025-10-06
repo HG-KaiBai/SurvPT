@@ -17,6 +17,8 @@ List SurvPT(const arma::mat X, //Data (n by d matrix)
     //Initialize the class object
     PT my_tree(X, prior, support, max_M, prior_params, allocated);
 
+    my_tree.re_allocation();
+
     List out = my_tree.output();
 
     my_tree.clear();

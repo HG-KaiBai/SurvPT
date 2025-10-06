@@ -30,7 +30,10 @@ public:
     double choose_split(int level, double left, double right); // choose split points for each node
     double init_alpha(int level, double left, double right); // update concentration parameters alpha
     void init_allocations(int parent, int left_child, int right_child); // update number of observations allocated to each node
-    double init_individual_allocation(double left_obs, double right_obs, double left_bound, double right_bound); // individual allocation based on prior
+    double init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on prior
+    void re_allocation(); // update allocations by the previous PT distribution
+    void update_allocations(int parent, int left_child, int right_child); // update allocations for children nodes
+    double update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on posterior
     List output(); // output results
 
 private:
@@ -42,6 +45,7 @@ private:
     vec n_obs_allocated; // number of observations allocated to each node
     vec posterior_probs; // posterior probabilities of each node
     vec terminal_nodes; // indices of terminal nodes
+    vec new_posterior_probs; // new posterior probabilities after update
 };
 
 #endif
