@@ -6,17 +6,23 @@
 \usage{
 survPT(
   X,
+  test_seq = NULL,
   prior = 1,
   support = c(0, Inf),
   max_M = 8,
   prior_params = NULL,
-  allocated = 1
+  allocated = 1,
+  max_EM_iter = 100,
+  EM_tol = 1e-06,
+  verbose = TRUE
 )
 }
 \arguments{
 \item{X}{Data frame with three columns: L (left interval), R (right interval), and status (1 if event observed, 0 if censored)}
 
-\item{prior}{Prior type, "Dirichlet" or "Beta"}
+\item{test_seq}{Sequence of test points for survival probability estimation (optional)}
+
+\item{prior}{Prior type, (1: Uniform, 2: Exponential, 3: Weibull)}
 
 \item{support}{Support type, "Finite" or "Infinite"}
 
@@ -25,6 +31,12 @@ survPT(
 \item{prior_params}{Prior parameters, a vector of length 2}
 
 \item{allocated}{Logical, whether to use allocated version}
+
+\item{max_EM_iter}{Maximum number of EM iterations}
+
+\item{EM_tol}{Tolerance for EM convergence}
+
+\item{verbose}{Logical, whether to print progress messages}
 }
 \value{
 A list with the following components: Left (left interval), Right (right interval), Alpha (prior parameters), Allocations (number of observations allocated to each partition), Posterior_Probs (posterior probabilities for each partition)
