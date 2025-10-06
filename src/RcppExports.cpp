@@ -12,24 +12,28 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // SurvPT
-List SurvPT(const arma::mat X, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated);
-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP) {
+List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
+RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type test_seq(test_seqSEXP);
     Rcpp::traits::input_parameter< const int >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type support(supportSEXP);
     Rcpp::traits::input_parameter< const int >::type max_M(max_MSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type prior_params(prior_paramsSEXP);
     Rcpp::traits::input_parameter< const int >::type allocated(allocatedSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, prior, support, max_M, prior_params, allocated));
+    Rcpp::traits::input_parameter< const int >::type max_EM_iter(max_EM_iterSEXP);
+    Rcpp::traits::input_parameter< const double >::type EM_tol(EM_tolSEXP);
+    Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 6},
+    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 10},
     {NULL, NULL, 0}
 };
 

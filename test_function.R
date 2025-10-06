@@ -1,5 +1,7 @@
-test_data = data_cs(seed = 123, n = 200, K = 1, Lambda = 0.12, q = 0.3)
-
+devtools::load_all()
+test_data = data_rc(seed = 123, n = 200, K = 1, Lambda = 0.12, q = 0.3)
+exp_par = estimate_exp(test_data[,1], test_data[,2])
+weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
 tryCatch({
   cat("Calling SurvPT with uniform prior...\n")
