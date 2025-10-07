@@ -323,6 +323,10 @@ void PT::re_allocation() {
         int left_child = min(children);
         int right_child = max(children);
 
+        // reset prior alphas for children based on current tree structure
+        alpha(left_child) = pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        alpha(right_child) = pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+
         // allocate observations to children
         update_allocations(i, left_child, right_child);
 
