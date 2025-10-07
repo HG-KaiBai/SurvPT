@@ -1,3 +1,9 @@
 useDynLib(SurvPT, .registration = TRUE)
 importFrom(Rcpp, evalCpp)
-
+export(SurvPT)
+export(data_cs)
+export(data_ic)
+export(data_rc)
+export(estimate)
+export(estimate_exp)
+export(survPT)
