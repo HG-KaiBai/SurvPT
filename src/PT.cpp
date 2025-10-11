@@ -96,10 +96,12 @@ void PT::init() {
         init_allocations(i, left_child, right_child);
 
         // posterior probabilities (initially set to prior probabilities)
-        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child);
+        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
+        double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
-            posterior_probs(left_child) = ((alpha(left_child) + n_obs_allocated(left_child)) / total) * posterior_probs(i);
-            posterior_probs(right_child) = ((alpha(right_child) + n_obs_allocated(right_child)) / total) * posterior_probs(i);
+            double left_prob = min(max(left_count / total, SMALL_VALUE), 1.0 - SMALL_VALUE);
+            posterior_probs(left_child) = left_prob * posterior_probs(i);
+            posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
         } else {
             posterior_probs(left_child) = 0.5 * posterior_probs(i);
             posterior_probs(right_child) = 0.5 * posterior_probs(i);
@@ -332,9 +334,11 @@ void PT::re_allocation() {
 
         // posterior probabilities (initially set to prior probabilities)
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child);
+        double left_count = alpha(left_child) + n_obs_allocated(left_child);
         if (total > SMALL_VALUE) {
-            new_posterior_probs(left_child) = ((alpha(left_child) + n_obs_allocated(left_child)) / total) * new_posterior_probs(i);
-            new_posterior_probs(right_child) = ((alpha(right_child) + n_obs_allocated(right_child)) / total) * new_posterior_probs(i);
+            double left_prob = min(max(left_count / total, SMALL_VALUE), 1.0 - SMALL_VALUE);
+            new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
+            new_posterior_probs(right_child) = (1 - left_prob) * new_posterior_probs(i);
         } else {
             new_posterior_probs(left_child) = 0.5 * new_posterior_probs(i);
             new_posterior_probs(right_child) = 0.5 * new_posterior_probs(i);
