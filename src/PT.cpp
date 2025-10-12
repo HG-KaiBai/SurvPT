@@ -1,6 +1,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include <chrono>
+#include "helper.h"
 #include "PT.h"
 
 using namespace Rcpp;
@@ -99,7 +100,7 @@ void PT::init() {
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
         double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, SMALL_VALUE), 1.0 - SMALL_VALUE);
+            double left_prob = min(max(left_count / total, 0.0), 1.0);
             posterior_probs(left_child) = left_prob * posterior_probs(i);
             posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
         } else {
@@ -325,9 +326,18 @@ void PT::re_allocation() {
         int left_child = min(children);
         int right_child = max(children);
 
+        double s_hat = posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+
+        double s_old = alpha(left_child) / (alpha(left_child) + alpha(right_child) + SMALL_VALUE);
+
+        double s = newton_raphson(s_hat, s_old, node_levels(left_child), s_hat);
+
+        alpha(left_child) = pow(node_levels(left_child), 2.0) * s;
+        alpha(right_child) = pow(node_levels(right_child), 2.0) * (1 - s);
+
         // reset prior alphas for children based on current tree structure
-        alpha(left_child) = pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
-        alpha(right_child) = pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        // alpha(left_child) = pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        // alpha(right_child) = pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
 
         // allocate observations to children
         update_allocations(i, left_child, right_child);
@@ -336,7 +346,7 @@ void PT::re_allocation() {
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child);
         double left_count = alpha(left_child) + n_obs_allocated(left_child);
         if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, SMALL_VALUE), 1.0 - SMALL_VALUE);
+            double left_prob = min(max(left_count / total, 0.0), 1.0);
             new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
             new_posterior_probs(right_child) = (1 - left_prob) * new_posterior_probs(i);
         } else {
