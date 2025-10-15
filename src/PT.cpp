@@ -343,8 +343,8 @@ void PT::re_allocation() {
         update_allocations(i, left_child, right_child);
 
         // posterior probabilities (initially set to prior probabilities)
-        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child);
-        double left_count = alpha(left_child) + n_obs_allocated(left_child);
+        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
+        double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
             double left_prob = min(max(left_count / total, 0.0), 1.0);
             new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
