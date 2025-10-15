@@ -2,13 +2,13 @@ devtools::load_all()
 library(interval)
 K = 1
 Lambda = 0.12
-test_data = data_ic(seed = 123, n = 1000, K = K, Lambda = Lambda, q = 0.3)
+test_data = data_ic(seed = 123, n = 200, K = K, Lambda = Lambda, q = 0.3)
 exp_par = estimate_exp(test_data[,1], test_data[,2])
 weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
 tryCatch({
   cat("Calling SurvPT with uniform prior...\n")
-  result <- survPT(test_data, max_EM_iter = 100, EM_tol = 1e-4)
+  result <- survPT(test_data, max_EM_iter = 500, EM_tol = 1e-4)
 
   cat("Success! Result structure:\n")
   print(str(result))

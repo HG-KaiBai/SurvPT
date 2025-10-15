@@ -296,9 +296,10 @@ void PT::EM_step() {
     auto start = std::chrono::high_resolution_clock::now();
     while (condition && iter <= max_EM_iter)
     {
-        vec old_posterior_probs = posterior_probs;
+        arma::uvec idx = arma::conv_to<arma::uvec>::from(terminal_nodes);
+        vec old_terminal_probs = posterior_probs.elem(idx);
         re_allocation();
-        double diff = arma::norm(posterior_probs - old_posterior_probs, 2);
+        double diff = arma::norm(posterior_probs.elem(idx) - old_terminal_probs, 2);
         condition = (diff > EM_tol);
         if (verbose) {
             auto end = std::chrono::high_resolution_clock::now();
