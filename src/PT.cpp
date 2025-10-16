@@ -48,7 +48,7 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
 
     in_node_obs = mat(NODES_NUM, n, fill::zeros);
     for (int i = 0; i < n; i++) {
-        in_node_obs(0, i) = 1; // all observations start at the root
+        in_node_obs(0, i) = 1.0; // all observations start at the root
     }
 
     n_obs_allocated = vec(NODES_NUM, fill::zeros);
@@ -118,7 +118,7 @@ double PT::choose_split(int level, double left, double right) {
         if (arma::is_finite(right)){
             return (left + right) / 2.0; // midpoint split
         } else {
-            return left + (largest_obs - support(0)) / (1 << level); // exponential split
+            return left + (largest_obs - support(0)) / (1 << (level + 1)); // exponential split
         }
     } else if (prior == 2) { // Exponential
         const double lambda = prior_params(0);
@@ -190,14 +190,26 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
         if (allocated == 1) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-                in_node_obs(left_child, obs) = 1.0;
-                n_obs_allocated(left_child) += init_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+                if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
+                    // point mass
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += 1.0;
+                } else if (right_obs != left_obs) {
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += init_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+                }
             }
 
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-                in_node_obs(right_child, obs) = 1.0;
-                n_obs_allocated(right_child) += init_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+                if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
+                    // point mass
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += 1.0;
+                } else if (right_obs != left_obs) {
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += init_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+                }
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
@@ -217,7 +229,7 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
     // check for sum of allocations
         if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
             std::cout << "Parent node: " << n_obs_allocated(parent) << ", Left child: " << n_obs_allocated(left_child) << ", Right child: " << n_obs_allocated(right_child) << std::endl;
-            Rcpp::stop("Sum of allocations exceeds parent sample size.");
+            std::cout << "Sum of allocations exceeds parent sample size." << std::endl;
         }
     }
 }
@@ -240,8 +252,6 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         }
         if (width_obs > SMALL_VALUE) {
             return joint_width / width_obs;
-        } else {
-            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else if (prior == 2) { // Exponential
         const double lambda = prior_params(0);
@@ -258,8 +268,6 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         }
         if (denominator > SMALL_VALUE) {
             return numerator / denominator;
-        } else {
-            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else if (prior == 3) { // Weibull
         const double lambda = prior_params(0);
@@ -277,8 +285,6 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         }
         if (denominator > SMALL_VALUE) {
             return numerator / denominator;
-        } else {
-            return (right_node != left_obs) ? 1.0 : 0.0;
         }
     } else {
         Rcpp::stop("Invalid prior type.");
@@ -376,22 +382,35 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
         if (allocated == 1) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-                in_node_obs(left_child, obs) = 1.0;
-                n_obs_allocated(left_child) += update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
-            }
 
+                if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
+                    // point mass
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += 1.0;
+                } else if (right_obs != left_obs) {
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+                }
+            }
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-                in_node_obs(right_child, obs) = 1.0;
-                n_obs_allocated(right_child) += update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+
+                if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
+                    // point mass
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += 1.0;
+                } else if (right_obs != left_obs) {
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+                }
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
-            if (left_obs < right_bound(left_child) && right_obs > left_bound(left_child)) {
+            if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
                 in_node_obs(left_child, obs) = 1.0;
                 n_obs_allocated(left_child) += 1.0;
             }
-            if (left_obs < right_bound(right_child) && right_obs > left_bound(right_child)) {
+            if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
                 in_node_obs(right_child, obs) = 1.0;
                 n_obs_allocated(right_child) += 1.0;
             }
@@ -403,7 +422,7 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
     // check for sum of allocations
         if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
             std::cout << "Parent node: " << n_obs_allocated(parent) << ", Left child: " << n_obs_allocated(left_child) << ", Right child: " << n_obs_allocated(right_child) << std::endl;
-            Rcpp::stop("Sum of allocations exceeds parent sample size.");
+            std::cout << "Sum of allocations exceeds parent sample size." << std::endl;
         }
     }
 }
@@ -441,8 +460,6 @@ double PT::update_individual_allocation(double left_obs, double right_obs, doubl
     // Avoid division by zero
     if (p_data > SMALL_VALUE) {
         return p_joint / p_data;
-    } else {
-        return (right_node != left_obs) ? 1.0 : 0.0;
     }
 
     return 0.0;
