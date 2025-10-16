@@ -333,18 +333,18 @@ void PT::re_allocation() {
         int left_child = min(children);
         int right_child = max(children);
 
-        double theta_hat = posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        // double theta_hat = posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        
+        // double s_old = alpha(left_child) / (alpha(left_child) + alpha(right_child) + SMALL_VALUE);
+        
+        // double s = newton_raphson(s_old, node_levels(left_child), theta_hat);
 
-        double s_old = alpha(left_child) / (alpha(left_child) + alpha(right_child) + SMALL_VALUE);
-
-        double s = newton_raphson(s_old, node_levels(left_child), theta_hat);
-
-        alpha(left_child) = pow(node_levels(left_child), 2.0) * s;
-        alpha(right_child) = pow(node_levels(right_child), 2.0) * (1 - s);
+        // alpha(left_child) = pow(node_levels(left_child), 2.0) * s;
+        // alpha(right_child) = pow(node_levels(right_child), 2.0) * (1 - s);
 
         // reset prior alphas for children based on current tree structure
-        // alpha(left_child) = pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
-        // alpha(right_child) = pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        // alpha(left_child) = 1 + pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
+        // alpha(right_child) = 1 + pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
 
         // allocate observations to children
         update_allocations(i, left_child, right_child);
