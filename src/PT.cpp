@@ -303,7 +303,7 @@ void PT::EM_step() {
     {
         arma::uvec idx = arma::conv_to<arma::uvec>::from(terminal_nodes);
         vec old_terminal_probs = posterior_probs.elem(idx);
-        re_allocation();
+        re_allocation(); // EM step
         double diff = arma::norm(posterior_probs.elem(idx) - old_terminal_probs, 2);
         condition = (diff > EM_tol);
         if (verbose) {
@@ -314,7 +314,6 @@ void PT::EM_step() {
         iter++;
     }
 }
-
 
 
 
@@ -330,16 +329,7 @@ void PT::re_allocation() {
         arma::uvec children = arma::find(parent_nodes == static_cast<double>(i));
 
         int left_child = min(children);
-        int right_child = max(children);
-
-        // reset prior alphas for children based on current tree structure
-        // alpha(left_child) = 1 + pow(node_levels(left_child), 2.0) * posterior_probs(left_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
-        // alpha(right_child) = 1 + pow(node_levels(right_child), 2.0) * posterior_probs(right_child) / (posterior_probs(left_child) + posterior_probs(right_child) + SMALL_VALUE);
-
-        // alpha(left_child) = 1 + pow(node_levels(left_child), 2.0) * (alpha(left_child) + n_obs_allocated(left_child) - 1) /
-        //                         (alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2 + SMALL_VALUE);
-        // alpha(right_child) = 1 + pow(node_levels(right_child), 2.0) * (alpha(right_child) + n_obs_allocated(right_child) - 1) /
-        //                         (alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2 + SMALL_VALUE);
+        int right_child = max(children);        
 
         // allocate observations to children
         update_allocations(i, left_child, right_child);
