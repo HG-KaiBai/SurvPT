@@ -9,7 +9,7 @@ weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
 tryCatch({
   cat("Calling SurvPT with uniform prior...\n")
-  result <- survPT(test_data, prior = 1, prior_params = exp_par, max_EM_iter = 100, EM_tol = 1e-6)
+  result <- survPT(test_data, prior = 1, prior_params = exp_par, max_EM_iter = 100, EM_tol = 1e-4)
 
   cat("Success! Result structure:\n")
   print(str(result))
