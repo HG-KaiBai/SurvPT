@@ -154,8 +154,9 @@ double PT::init_alpha(int level, double left, double right) {
         Rcpp::stop("Level must be positive.");
     }
     return pow(level, 2.0) * 0.5; // example: increasing with level
+    // Uncomment below for prior-dependent alpha initialization
     // if (prior == 1) { // Uniform
-    //     return pow(level, 2.0) * 0.5; // example: increasing with level
+    //     return pow(level, 2.0) * 0.5;
     // } else if (prior == 2) { // Exponential
     //     const double lambda = prior_params(0);
     //     if (arma::is_finite(right)) {
