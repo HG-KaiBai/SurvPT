@@ -1,5 +1,6 @@
 library(SurvPT)
 library(survival)
+library(interval)
 library(parallel)
 
 simu <- function(t, n, K, Lambda, q, type){
@@ -34,9 +35,9 @@ simu <- function(t, n, K, Lambda, q, type){
   }
 
   start_time <- Sys.time()
-  # kmf = icfit(data$L, data$R)
+  # kmf1 = icfit(data$L, data$R)
   # turnbull_surv = getsurv(x, kmf, "interpolation")[[1]]$S
-  kmf = survfit(Surv(data$L, data$R, type = "interval2")~1)
+  kmf = survfit(Surv(data$L, data$R, type = "interval2")~0)
   turnbull_surv = summary(kmf, times = x, extend = TRUE)$surv
   turnbull_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
   time = c(time, turnbull_time)
