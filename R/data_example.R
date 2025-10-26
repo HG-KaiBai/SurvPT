@@ -103,3 +103,137 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
   data$status = ifelse(data$L == data$R, 1, 0)
   return(data)
 }
+
+
+
+#' Scenario 1 from Fiducial Approach paper (Cui et.al. 2024)
+#'
+#' @param t Random seed
+#' @param n Sample size
+#'
+#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @export
+#'
+#' @examples
+#' data = fiducial_1(t = 123, n = 100)
+fiducial_1 <- function(t, n){
+  set.seed(t)
+  T = rexp(n, rate = 1)
+  C = rexp(n, rate = 1)
+  delta = as.numeric(T<C)
+  l = ifelse(delta == 1, 0, C)
+  r = ifelse(delta == 1, C, Inf)
+  data = data.frame(L = l, R = r)
+  colnames(data) = c("L", "R")
+  return(data)
+}
+
+#' Scenario 2 from Fiducial Approach paper (Cui et.al. 2024)
+#'
+#' @param t Random seed
+#' @param n Sample size
+#'
+#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @export
+#'
+#' @examples
+#' data = fiducial_2(t = 123, n = 100)
+fiducial_2 <- function(t, n){
+  set.seed(t)
+  T = rgamma(n, 3, 1)
+  C = runif(n, 0, 5)
+  delta = as.numeric(T<C)
+  l = ifelse(delta == 1, 0, C)
+  r = ifelse(delta == 1, C, Inf)
+  data = data.frame(L = l, R = r)
+  colnames(data) = c("L", "R")
+  return(data)
+}
+
+#' Scenario 3 from Fiducial Approach paper (Cui et.al. 2024)
+#'
+#' @param t Random seed
+#' @param n Sample size
+#'
+#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @export
+#'
+#' @examples
+#' data = fiducial_3(t = 123, n = 100)
+fiducial_3 <- function(t, n){
+  set.seed(t)
+  T = rgamma(n, 2, 1)
+  C1 = runif(n, 0, 2)
+  C2 = C1 + 0.5 + runif(n, 0, 2)
+  lb = ifelse(T < C1, 0, ifelse(T >= C2, C2, C1))
+  rb = ifelse(T < C1, C1, ifelse(T >= C2, Inf, C2))
+  data = data.frame(L = lb, R = rb)
+  colnames(data) = c("L", "R")
+  return(data)
+}
+
+#' Scenario 4 from Fiducial Approach paper (Cui et.al. 2024)
+#'
+#' @param t Random seed
+#' @param n Sample size
+#'
+#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @export
+#'
+#' @examples
+#' data = fiducial_4(t = 123, n = 100)
+fiducial_4 <- function(t, n){
+  set.seed(t)
+  T = rexp(n, 1)
+  n_obs = sample(1:4, n, replace = TRUE, prob = rep(0.25, 4))
+  bounds = matrix(0, nrow = n, ncol = 2)
+  for (i in 1:n){
+    times = sort(runif(n_obs[i], 0, 3))
+    idx = which(times <= T[i])
+    if (length(idx) == 0){
+      bounds[i,1] <- 0
+    } else {
+      bounds[i,1] <- times[max(idx)]
+    }
+    idx = which(times > T[i])
+    if (length(idx) == 0){
+      bounds[i,2] <- Inf
+    } else {
+      bounds[i,2] <- times[min(idx)]
+    }
+  }
+  data = data.frame(L = bounds[,1], R = bounds[,2])
+  colnames(data) = c("L", "R")
+  return(data)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

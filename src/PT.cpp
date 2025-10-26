@@ -330,7 +330,7 @@ void PT::re_allocation() {
         arma::uvec children = arma::find(parent_nodes == static_cast<double>(i));
 
         int left_child = min(children);
-        int right_child = max(children);        
+        int right_child = max(children);
 
         // allocate observations to children
         update_allocations(i, left_child, right_child);
