@@ -19,6 +19,18 @@ tryCatch({
   print(e)
 })
 
+tryCatch({
+  cat("Calling SurvOPT with uniform prior...\n")
+  result <- survOPT(test_data$L, test_data$status)
+
+  cat("Success! Result structure:\n")
+  print(str(result))
+
+}, error = function(e) {
+  cat("Error occurred:\n")
+  print(e)
+})
+
 
 for (l in 0:8){
   print(sum(result$Posterior_Probs[result$Level == l]))

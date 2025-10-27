@@ -16,7 +16,11 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
     X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
 
     n = X.n_rows;
-    NODES_NUM = (1 << (8 + 1)) - 1; // number of nodes first 8 complete levels
+    if (max_M <= 10){
+        NODES_NUM = (1 << (max_M + 1)) - 1; // number of nodes for complete tree
+    } else {
+        NODES_NUM = (1 << (8 + 1)) - 1; // number of nodes first 8 complete levels
+    }
     nodes_used = 0;
 
     largest_obs = -LARGE_VALUE;
@@ -43,7 +47,9 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
     alpha(0) = 1.0;
 
     parent_nodes = vec(NODES_NUM, fill::zeros);
-    parent_nodes(0) = -1; // root has no parent
+    for (int i = 0; i < NODES_NUM; i++) {
+        parent_nodes(i) = -1; // root has no parent
+    }
 
     in_node_obs = mat(NODES_NUM, n, fill::zeros);
     for (int i = 0; i < n; i++) {
@@ -242,13 +248,13 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
         if (arma::is_finite(right_obs)){
             width_obs = right_obs - left_obs;
         } else {
-            width_obs = 2 * largest_obs - left_obs; // arbitrary large width for right-censored
+            width_obs = 1.1 * largest_obs - left_obs; // arbitrary large width for right-censored
         }
         double joint_width;
         if (arma::is_finite(joint_right)){
             joint_width = joint_right - joint_left;
         } else {
-            joint_width = 2 * largest_obs - joint_left; // arbitrary large width for right-censored
+            joint_width = 1.1 * largest_obs - joint_left; // arbitrary large width for right-censored
         }
         if (width_obs > SMALL_VALUE) {
             return joint_width / width_obs;
@@ -424,7 +430,7 @@ double PT::update_individual_allocation(double left_obs, double right_obs, doubl
     for (arma::uword t = 0; t < terminal_nodes.n_rows; ++t) {
         int node = static_cast<int>(terminal_nodes(t));
         double node_left = left_bound(node);
-        double node_right = (arma::is_finite(right_bound(node))) ? right_bound(node) : 2 * largest_obs; // handle infinite right bound
+        double node_right = (arma::is_finite(right_bound(node))) ? right_bound(node) : 1.1 * largest_obs; // handle infinite right bound
 
         // Compute overlap between [joint_left, joint_right] and [node_left, node_right]
         double overlap_left = std::max(joint_left, node_left);
@@ -494,9 +500,9 @@ List PT::output() {
             double b = right_bound(node);
             const double w = posterior_probs(node);
 
-            // approximate infinite right bound using 2 * largest_obs
+            // approximate infinite right bound using 1.1 * largest_obs
             if (!arma::is_finite(b)) {
-                b = 2.0 * largest_obs;
+                b = 1.1 * largest_obs;
             }
 
             if (t < a) {

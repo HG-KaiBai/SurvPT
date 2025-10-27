@@ -11,6 +11,25 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// OPT_right
+List OPT_right(const arma::vec X, const arma::vec delta, const arma::vec test_seq, const double Rho, const arma::vec support, const int max_M, const int max_iter, const double iter_tol, const bool verbose);
+RcppExport SEXP _SurvPT_OPT_right(SEXP XSEXP, SEXP deltaSEXP, SEXP test_seqSEXP, SEXP RhoSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP max_iterSEXP, SEXP iter_tolSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::vec >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type delta(deltaSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type test_seq(test_seqSEXP);
+    Rcpp::traits::input_parameter< const double >::type Rho(RhoSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type support(supportSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_M(max_MSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_iter(max_iterSEXP);
+    Rcpp::traits::input_parameter< const double >::type iter_tol(iter_tolSEXP);
+    Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(OPT_right(X, delta, test_seq, Rho, support, max_M, max_iter, iter_tol, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
 // SurvPT
 List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
 RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP) {
@@ -33,6 +52,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_SurvPT_OPT_right", (DL_FUNC) &_SurvPT_OPT_right, 9},
     {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 10},
     {NULL, NULL, 0}
 };
