@@ -30,7 +30,7 @@ OPT::OPT(const vec X, const vec delta, const vec test_seq, const double Rho, con
     }
 
     largest_obs = max(X);
-    
+
 
     // initialize other member variables
     left_bound = vec(NODES_NUM, fill::zeros);
@@ -369,11 +369,11 @@ void OPT::pos_probs() {
     //
     // where for each step we move from parent A_{i-1} to child A_i along the path from root to a terminal node.
     // We set a_0 = rho(root), b_0 = 1 - rho(root). The final posterior mass for a terminal node is a_last.
-    
+
     // keep the working vector used by EM initialization unchanged
     new_posterior_probs.zeros();
     new_posterior_probs(0) = 1.0; // root node starts with probability 1 for EM
-    
+
     // helper: interval width (Lebesgue measure), with infinite right bound approximated
     auto mu = [&](int node) -> double {
         double a = left_bound(node);
@@ -385,7 +385,7 @@ void OPT::pos_probs() {
         if (!(w > SMALL_VALUE)) w = SMALL_VALUE;
         return w;
     };
-    
+
     // helper: sibling index of 'child' under 'parent' (binary tree). Returns -1 if unavailable.
     auto sibling_of = [&](int parent, int child) -> int {
         arma::uvec ch = arma::find(parent_nodes.head(nodes_used + 1) == static_cast<double>(parent));
@@ -394,14 +394,14 @@ void OPT::pos_probs() {
         int c1 = static_cast<int>(ch(1));
         return (c0 == child) ? c1 : c0;
     };
-    
+
     posterior_probs.zeros();
-    
+
     // iterate over terminal nodes
     arma::uvec terms = arma::conv_to<arma::uvec>::from(terminal_nodes);
     for (arma::uword tIdx = 0; tIdx < terms.n_elem; ++tIdx) {
         int leaf = static_cast<int>(terms(tIdx));
-        
+
         // collect path from leaf up to root (reverse order): [leaf, parent, ..., root]
         std::vector<int> revPath;
         int cur = leaf;
@@ -409,37 +409,37 @@ void OPT::pos_probs() {
             revPath.push_back(cur);
             cur = static_cast<int>(parent_nodes(cur));
         }
-        
+
         // initialize at root: a_0 = rho(root), b_0 = 1 - rho(root)
         int root = revPath.back();
         double a = std::min(std::max(rho(root), 0.0), 1.0);
         double b = 1.0 - a;
-        
+
         // walk from root to leaf using revPath indices: parent = revPath[j], child = revPath[j-1]
         for (int j = static_cast<int>(revPath.size()) - 1; j >= 1; --j) {
             int parent = revPath[j];
             int child  = revPath[j - 1];
-            
+
             // width ratio
             double w_ratio = mu(child) / mu(parent);
-            
+
             // Dirichlet splitting weight to this child
             double a_child = std::max(n_obs_allocated(child) + alpha(child), SMALL_VALUE);
             int sib = sibling_of(parent, child);
             double a_sib = (sib >= 0) ? std::max(n_obs_allocated(sib) + alpha(sib), SMALL_VALUE) : a_child;
             double denom = a_child + a_sib;
             double pi = (denom > SMALL_VALUE) ? (a_child / denom) : 0.5;
-            
+
             // stopping probability at the child
             double r = std::min(std::max(rho(child), 0.0), 1.0);
-            
+
             // update
             double a_new = w_ratio * a + pi * r * b;
             double b_new = pi * (1.0 - r) * b;
             a = a_new;
             b = b_new;
         }
-        
+
         // terminal node mass is a_last
         posterior_probs(leaf) = a + b;
     }
@@ -504,7 +504,7 @@ void OPT::update_allocations(int parent, int left_child, int right_child) {
 
     for (arma::uword k = 0; k < parent_idx.n_elem; ++k) {
         const arma::uword obs = parent_idx(k);
-        const double obs_time = X(obs); 
+        const double obs_time = X(obs);
         const double obs_delta = delta(obs);
         const double s = right_bound(left_child);
         // update for left child
