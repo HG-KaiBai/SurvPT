@@ -155,7 +155,12 @@ void OPT::init_allocations(int parent, int left_child, int right_child) {
             } else if (obs_time < s && obs_delta == 0.0) {
                 in_node_obs(left_child, obs) = 1.0;
                 in_node_obs(right_child, obs) = 1.0;
-                temp = WKM_allocation(obs_time);
+                double de = WKM_allocation(max(obs_time, left_bound(parent))) - WKM_allocation(right_bound(parent));
+                if (de < SMALL_VALUE) {
+                    continue;
+                } else {
+                    temp = (WKM_allocation(max(obs_time, left_bound(parent))) - WKM_allocation(s)) / de;
+                }
             }
         }
         n_obs_allocated(left_child) += temp;
@@ -209,13 +214,9 @@ void OPT::conditional_prob_WKM(const arma::vec& Y,
     for (arma::uword g = 0; g < G; ++g) {
         double dk = dks[g];
         double rk = rks[g];
-        if (dk > 0.0 && rk > 0.0) {
-            double frac = dk / rk;
-            if (frac < 0) frac = 0;
-            if (frac > 1) frac = 1;
-            Srun *= (1.0 - frac);
-            Se.push_back(Srun);
-        }
+        double frac = min(max(dk / rk, 0.0), 1.0);
+        Srun *= (1.0 - frac);
+        Se.push_back(Srun);
     }
     node_km = arma::vec(Se);
     node_times = arma::vec(times);

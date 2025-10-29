@@ -3,13 +3,13 @@ library(interval)
 K = 1
 Lambda = 0.12
 
-test_data = data_rc(seed = 23, n = 200, K = K, Lambda = Lambda, q = 0.3)
+test_data = data_rc(seed = 992, n = 200, K = K, Lambda = Lambda, q = 0.3)
 exp_par = estimate_exp(test_data[,1], test_data[,2])
 weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
 tryCatch({
   cat("Calling SurvPT with uniform prior...\n")
-  result <- survPT(test_data, prior = 1, prior_params = exp_par, max_M = 9, max_EM_iter = 100, EM_tol = 1e-4)
+  result <- survPT(test_data, prior = 1, prior_params = exp_par, max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
 
   cat("Success! Result structure:\n")
   print(str(result))
@@ -22,6 +22,7 @@ tryCatch({
 for (l in 0:9){
   print(sum(result$Posterior_Probs[result$Level == l]))
 }
+sum(result$Posterior_Probs[result$Terminal_Nodes])
 
 tryCatch({
   cat("Calling SurvOPT with uniform prior...\n")
@@ -35,9 +36,11 @@ tryCatch({
   print(e)
 })
 
-for (l in 0:10){
+for (l in 0:9){
   print(sum(result1$Posterior_Probs[result1$Level == l]))
 }
+print(sum(result1$Posterior_Probs[result1$Terminal_Nodes+1]))
+
 
 
 kmf = icfit(test_data$L, test_data$R)
