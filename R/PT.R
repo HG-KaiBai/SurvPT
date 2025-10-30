@@ -51,7 +51,7 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
                   "Level" = out$node_levels,
                   "Allocations" = out$n_obs_allocated,
                   "Posterior_Probs" = out$posterior_probs,
-                  "Terminal_Nodes" = out$terminal_nodes,
+                  "Terminal_Nodes" = out$terminal_nodes + 1,
                   "Test_seq" = test_seq,
                   "Survival_Probs" = out$survival_probs
                   )

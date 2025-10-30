@@ -42,7 +42,7 @@ survOPT <- function(X, delta, test_seq = NULL, Rho = 0.5, support = c(0, Inf), m
                   "Rho" = out$rho,
                   "Allocations" = out$n_obs_allocated,
                   "Posterior_Probs" = out$posterior_probs,
-                  "Terminal_Nodes" = out$terminal_nodes,
+                  "Terminal_Nodes" = out$terminal_nodes + 1,
                   "Test_seq" = test_seq,
                   "Survival_Probs" = out$survival_probs
                   )

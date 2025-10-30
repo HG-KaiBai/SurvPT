@@ -39,7 +39,7 @@ tryCatch({
 for (l in 0:9){
   print(sum(result1$Posterior_Probs[result1$Level == l]))
 }
-print(sum(result1$Posterior_Probs[result1$Terminal_Nodes+1]))
+print(sum(result1$Posterior_Probs[result1$Terminal_Nodes]))
 
 
 

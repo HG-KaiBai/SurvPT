@@ -72,7 +72,7 @@ void OPT::init() {
         int level = node_levels(i);
 
         double split_point = choose_split(level, left_bound(i), right_bound(i));
-        if (split_point < 0) {
+        if (split_point < 0 || n_obs_allocated(i) < 1) {
             terminal_nodes.insert_rows(terminal_nodes.n_rows, vec({(double)i}));
             continue; // no split
         }
@@ -99,6 +99,13 @@ void OPT::init() {
 
         // allocate observations to children
         init_allocations(i, left_child, right_child);
+    }
+    // remove terminal node entries that reference nodes beyond the current nodes_used
+    if (terminal_nodes.n_rows > 0) {
+        arma::uvec keep = arma::find(terminal_nodes <= static_cast<double>(nodes_used));
+        if (keep.n_elem < terminal_nodes.n_rows) {
+            terminal_nodes = terminal_nodes.elem(keep);
+        }
     }
     pos_rho();
     pos_probs();
