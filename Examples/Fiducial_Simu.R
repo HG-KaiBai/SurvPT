@@ -10,7 +10,7 @@ simu <- function(t, n, type){
     grid = seq(0, 5, length.out = 100)
   } else if (type == 2){
     data = fiducial_2(t, n)
-    grid = seq(0, 5, length.out = 100)
+    grid = seq(0, 8, length.out = 100)
   } else if (type == 3){
     data = fiducial_3(t, n)
     grid = seq(0, 5, length.out = 100)
@@ -30,7 +30,7 @@ simu <- function(t, n, type){
 
   obs.mat = c(data$L[!is.infinite(data$L)], data$R[!is.infinite(data$R)])
   x = seq(0, max(obs.mat), by = max(obs.mat)/200)
-
+  grid = seq(0, max(obs.mat), length.out = 100)
   if (type == 1){
     true.surv = 1 - pexp(x, 1)
   } else if (type == 2){
@@ -43,7 +43,7 @@ simu <- function(t, n, type){
 
   for (prior in c(1, 2)){
     start_time <- Sys.time()
-    fit = survPT(data, test_seq = x, prior = prior, prior_params = exp_par, EM_tol = 1e-4, verbose = FALSE)
+    fit = survPT(data, test_seq = x, prior = prior, prior_params = exp_par, EM_tol = 1e-6, verbose = T)
     pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
     time = c(time, pt_time)
     err = sum((fit$Survival_Probs - true.surv)^2)
