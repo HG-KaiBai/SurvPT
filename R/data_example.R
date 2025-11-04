@@ -141,8 +141,7 @@ fiducial_1 <- function(t, n){
 fiducial_2 <- function(t, n){
   set.seed(t)
   T = rgamma(n, 3, 1)
-  #C = runif(n, 0, 8)
-  C = rexp(n, 0.7^(-1/3) - 1)
+  C = runif(n, 0, 10)
   delta = as.numeric(T<C)
   l = ifelse(delta == 1, 0, C)
   r = ifelse(delta == 1, C, Inf)
