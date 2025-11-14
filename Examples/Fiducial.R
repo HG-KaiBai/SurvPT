@@ -76,7 +76,7 @@ fiducial <- function(l, r, nsample, grid, testgrid, mfid = 1000, mburn = 100) {
   linefidi=apply(FiducialMidLine1,1,sort)
   point_li=linefidi[mfid*0.5,] # point estimator based on linear interpolation
 
-  return(point_li)
+  return(list(point_li = point_li, lower = linefidi[mfid * 0.025, ], upper = linefidi[mfid * 0.975, ]))
 }
 
 
