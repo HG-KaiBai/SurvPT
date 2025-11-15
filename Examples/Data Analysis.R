@@ -73,16 +73,19 @@ obs.mat = c(data$L[!is.infinite(data$L)], data$R[!is.infinite(data$R)])
 x = seq(0, max(obs.mat), by = max(obs.mat)/200)
 grid = seq(0, max(obs.mat), length.out = 100)
 
+tryCatch({
+  start_time <- Sys.time()
+  fit = pt_boot(data, B = 100)
+  pt_surv = fit$surv_probs
+  pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+  time = c(time, pt_time)
 
-start_time <- Sys.time()
-fit = pt_boot(data, B = 100)
-pt_surv = fit$surv_probs
-pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-time = c(time, pt_time)
-
-pt_lower = fit$lower_ci
-pt_upper = fit$upper_ci
-
+  pt_lower = fit$lower_ci
+  pt_upper = fit$upper_ci
+}, error = function(e) {
+  cat("Error in PT Bootstrap:\n")
+  print(e)
+})
 
 
 
@@ -101,16 +104,15 @@ plot = ggplot()+
   geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
   geom_step(aes(x = x, y = fiducial_surv, color = "Fiducial Estimate"), size = 1)+
   geom_ribbon(aes(x = x, ymin = fid_lower, ymax = fid_upper, fill = "Fiducial Estimate"), alpha = 0.2)+
-  labs(title = "Survival Function Estimates",
-       x = "Time",
+  labs(x = "Time",
        y = "Survival Probability")+
-  theme_minimal()+
-  theme(text = element_text(size = 16))+
+  scale_color_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red")) +
+  scale_fill_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red")) +
   scale_y_continuous(limits = c(0,1))+
   scale_x_continuous(limits = c(0,max(x)))+
-  theme(legend.position = "right") +
-  scale_color_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red")) +
-  scale_fill_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red"))
+  theme_minimal()+
+  theme(text = element_text(size = 16))+
+  theme(legend.position = "right")
 
 
 save(fit, fid, file = "heavy_treat_estimates.RData")

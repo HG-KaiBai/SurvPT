@@ -131,7 +131,7 @@ double PT::choose_split(int level, double left, double right) {
         if (arma::is_finite(right)){
             return (left + right) / 2.0; // midpoint split
         } else {
-            return left + (largest_obs - support(0)) / (1 << (level + 1)); // exponential split
+            return left + (1.1 * largest_obs - support(0)) / (1 << (level + 1)); // exponential split
         }
     } else if (prior == 2) { // Exponential
         const double lambda = prior_params(0);
