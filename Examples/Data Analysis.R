@@ -101,7 +101,7 @@ fid_upper = 1 - fid[[3]]
 
 plot = ggplot()+
   geom_step(aes(x = x, y = pt_surv, color = "PT Estimate"), size = 1)+
-  geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
+  #geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
   geom_step(aes(x = x, y = fiducial_surv, color = "Fiducial Estimate"), size = 1)+
   geom_ribbon(aes(x = x, ymin = fid_lower, ymax = fid_upper, fill = "Fiducial Estimate"), alpha = 0.2)+
   labs(x = "Time",

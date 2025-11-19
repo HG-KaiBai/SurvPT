@@ -553,14 +553,18 @@ double OPT::update_individual_allocation(double left_obs, double left_node, doub
     for (arma::uword t = 0; t < terminal_nodes.n_rows; ++t) {
         int node = static_cast<int>(terminal_nodes(t));
         double node_left = left_bound(node);
-        double node_right = (arma::is_finite(right_bound(node))) ? right_bound(node) : 1.1 * largest_obs; // handle infinite right bound
+        double node_right = right_bound(node);
 
         // Compute overlap between [joint_left, joint_right] and [node_left, node_right]
         double overlap_left = std::max(joint_left, node_left);
         double overlap_right = std::min(joint_right, node_right);
 
         if (overlap_left < overlap_right) {
+          if (arma::is_finite(overlap_right)) {
             p_joint += (overlap_right - overlap_left) / (node_right - node_left) * posterior_probs(node);
+          } else {
+            p_joint += posterior_probs(node);
+          }
         }
 
         // Compute overlap between [left_obs, right_obs] and [node_left, node_right]
@@ -568,7 +572,11 @@ double OPT::update_individual_allocation(double left_obs, double left_node, doub
         double obs_overlap_right = node_right;
 
         if (obs_overlap_left < obs_overlap_right) {
+          if (arma::is_finite(obs_overlap_right)) {
             p_data += (obs_overlap_right - obs_overlap_left) / (node_right - node_left) * posterior_probs(node);
+          } else {
+            p_data += posterior_probs(node);
+          }
         }
     }
 
@@ -623,20 +631,19 @@ List OPT::output() {
             double b = right_bound(node);
             const double w = posterior_probs(node);
 
-            // approximate infinite right bound using 1.1 * largest_obs
-            if (!arma::is_finite(b)) {
-                b = 1.1 * largest_obs;
-            }
-
             if (t < a) {
                 s += w;
             } else if (t >= b) {
                 // contributes 0
             } else {
+              if (arma::is_finite(b)) {
                 const double width = b - a;
                 if (width > SMALL_VALUE) {
-                    s += w * (b - t) / width;
+                  s += w * (b - t) / width;
                 }
+              } else {
+                s += w;
+              }
             }
         }
 
