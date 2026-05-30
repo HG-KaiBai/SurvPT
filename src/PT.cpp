@@ -73,7 +73,8 @@ void PT::init() {
         int level = node_levels(i);
 
         double split_point = choose_split(level, left_bound(i), right_bound(i));
-        if (split_point < 0 || n_obs_allocated(i) < 1) {
+        // if (split_point < 0 || n_obs_allocated(i) < 1) {
+        if (split_point < 0) {
             terminal_nodes.insert_rows(terminal_nodes.n_rows, vec({(double)i}));
             continue; // no split
         }
