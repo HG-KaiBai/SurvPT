@@ -148,14 +148,14 @@ void OPT::init_allocations(int parent, int left_child, int right_child) {
         const double s = right_bound(left_child);
         // update for left child
         double temp = 0.0;
-        if ((obs_delta == 1.0 && obs_time >= left_bound(parent) && obs_time < right_bound(parent)) ||
+        if ((obs_delta == 1.0 && obs_time > left_bound(parent) && obs_time <= right_bound(parent)) ||
             (obs_delta == 0.0 && obs_time < right_bound(parent))) {
-            if (obs_time >= s && obs_delta == 1.0) {
-                in_node_obs(right_child, obs) = 1.0;
-                temp = 0.0;
-            } else if (obs_time < s && obs_delta == 1.0) {
+            if (obs_time <= s && obs_delta == 1.0) {
                 in_node_obs(left_child, obs) = 1.0;
                 temp = 1.0;
+            } else if (obs_time > s && obs_delta == 1.0) {
+                in_node_obs(right_child, obs) = 1.0;
+                temp = 0.0;
             } else if (obs_time >= s && obs_delta == 0.0) {
                 in_node_obs(right_child, obs) = 1.0;
                 temp = 0.0;
@@ -516,15 +516,15 @@ void OPT::update_allocations(int parent, int left_child, int right_child) {
         const double obs_delta = delta(obs);
         const double s = right_bound(left_child);
         // update for left child
-        if ((obs_delta == 1.0 && obs_time >= left_bound(parent) && obs_time < right_bound(parent)) ||
+        if ((obs_delta == 1.0 && obs_time > left_bound(parent) && obs_time <= right_bound(parent)) ||
             (obs_delta == 0.0 && obs_time < right_bound(parent))) {
 
-            if (obs_time >= s && obs_delta == 1.0) {
-                in_node_obs(right_child, obs) = 1.0;
-                n_obs_allocated(right_child) += 1.0;
-            } else if (obs_time < s && obs_delta == 1.0) {
+            if (obs_time <= s && obs_delta == 1.0) {
                 in_node_obs(left_child, obs) = 1.0;
                 n_obs_allocated(left_child) += 1.0;
+            } else if (obs_time > s && obs_delta == 1.0) {
+                in_node_obs(right_child, obs) = 1.0;
+                n_obs_allocated(right_child) += 1.0;
             } else if (obs_time >= s && obs_delta == 0.0) {
                 in_node_obs(right_child, obs) = 1.0;
                 n_obs_allocated(right_child) += update_individual_allocation(obs_time, left_bound(right_child), right_bound(right_child));

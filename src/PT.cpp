@@ -204,7 +204,7 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
         if (allocated == 1) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-                if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
+                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
                     // point mass
                     in_node_obs(left_child, obs) = 1.0;
                     n_obs_allocated(left_child) += 1.0;
@@ -216,7 +216,7 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
 
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-                if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
+                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
                     // point mass
                     in_node_obs(right_child, obs) = 1.0;
                     n_obs_allocated(right_child) += 1.0;
@@ -227,13 +227,24 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
-            if (left_obs < right_bound(left_child) && right_obs > left_bound(left_child)) {
-                in_node_obs(left_child, obs) = 1.0;
-                n_obs_allocated(left_child) += 1.0;
-            }
-            if (left_obs < right_bound(right_child) && right_obs > left_bound(right_child)) {
-                in_node_obs(right_child, obs) = 1.0;
-                n_obs_allocated(right_child) += 1.0;
+            if (left_obs == right_obs) {
+                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += 1.0;
+                }
+                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += 1.0;
+                }
+            } else {
+                if (left_obs < right_bound(left_child) && right_obs > left_bound(left_child)) {
+                    in_node_obs(left_child, obs) = 1.0;
+                    n_obs_allocated(left_child) += 1.0;
+                }
+                if (left_obs < right_bound(right_child) && right_obs > left_bound(right_child)) {
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += 1.0;
+                }
             }
         } else {
             Rcpp::stop("Invalid allocation type.");
@@ -383,7 +394,7 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
 
-                if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
+                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
                     // point mass
                     in_node_obs(left_child, obs) = 1.0;
                     n_obs_allocated(left_child) += 1.0;
@@ -395,7 +406,7 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
 
-                if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
+                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
                     // point mass
                     in_node_obs(right_child, obs) = 1.0;
                     n_obs_allocated(right_child) += 1.0;
@@ -406,11 +417,11 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
-            if (left_obs >= left_bound(left_child) && right_obs < right_bound(left_child)) {
+            if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
                 in_node_obs(left_child, obs) = 1.0;
                 n_obs_allocated(left_child) += 1.0;
             }
-            if (left_obs >= left_bound(right_child) && right_obs < right_bound(right_child)) {
+            if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
                 in_node_obs(right_child, obs) = 1.0;
                 n_obs_allocated(right_child) += 1.0;
             }
@@ -506,6 +517,42 @@ List PT::output() {
     // compute survival probabilities at test_seq by mixing over terminal nodes
     survival_probs = vec(test_seq.n_elem, fill::zeros);
 
+    auto base_survival = [&](double x) -> double {
+        if (prior == 2) {
+            const double lambda = prior_params(0);
+            return exp(-lambda * x);
+        } else if (prior == 3) {
+            const double lambda = prior_params(0);
+            const double k = prior_params(1);
+            return exp(-pow(lambda * x, k));
+        }
+        Rcpp::stop("Invalid prior type.");
+        return 0.0;
+    };
+
+    auto terminal_survival = [&](double t, double a, double b) -> double {
+        if (prior == 1) {
+            double right = b;
+            if (!arma::is_finite(right)) {
+                right = arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
+            }
+            const double width = right - a;
+            if (width > SMALL_VALUE && t < right) {
+                return min(max((right - t) / width, 0.0), 1.0);
+            }
+            return 0.0;
+        }
+
+        const double survival_a = base_survival(a);
+        const double survival_t = base_survival(t);
+        const double survival_b = arma::is_finite(b) ? base_survival(b) : 0.0;
+        const double denom = survival_a - survival_b;
+        if (denom > SMALL_VALUE) {
+            return min(max((survival_t - survival_b) / denom, 0.0), 1.0);
+        }
+        return 0.0;
+    };
+
     for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
         const double t = test_seq(i);
         double s = 0.0;
@@ -521,14 +568,7 @@ List PT::output() {
             } else if (t >= b) {
                 // contributes 0
             } else {
-                if (arma::is_finite(b)) {
-                  const double width = b - a;
-                  if (width > SMALL_VALUE) {
-                      s += w * (b - t) / width;
-                  }
-                } else {
-                  s += w;
-                }
+                s += w * terminal_survival(t, a, b);
             }
         }
 
