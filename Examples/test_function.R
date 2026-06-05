@@ -50,3 +50,17 @@ lines(result1$Test_seq, result1$Survival_Probs, col = "green", lwd = 2)
 lines(result$Test_seq, 1-pweibull(result$Test_seq, K, 1/Lambda), col = "red", lwd = 2)
 legend("topright", legend = c("Kaplan-Meier", "SurvPT Estimate", "OPT Estimate", "True Survival"), col = c("black", "blue", "green" ,"red"), lwd = 2)
 
+
+result$density = abs(diff(result$Survival_Probs)) / diff(result$Test_seq)
+result1$density = abs(diff(result1$Survival_Probs)) / diff(result1$Test_seq)
+
+plot(result$Test_seq, dweibull(result$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
+lines(result$Test_seq[-200], result$density, col = "blue", lwd = 2)
+lines(result1$Test_seq[-200], result1$density, col = "green", lwd = 2)
+
+
+
+
+
+
+
