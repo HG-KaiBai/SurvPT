@@ -4,6 +4,28 @@
 fiducial <- function(l, r, nsample, grid, testgrid, mfid = 1000, mburn = 100) {
   ngrid = length(grid)
   ntestgrid = length(testgrid)
+  if (ntestgrid < 2) {
+    stop("testgrid must contain at least two points to estimate density from the CDF.")
+  }
+  if (any(diff(testgrid) <= 0)) {
+    stop("testgrid must be strictly increasing to estimate density from the CDF.")
+  }
+
+  cdf_to_density <- function(cdf, x) {
+    density <- numeric(length(cdf))
+    density[1] <- (cdf[2] - cdf[1]) / (x[2] - x[1])
+    density[length(cdf)] <- (cdf[length(cdf)] - cdf[length(cdf) - 1]) /
+      (x[length(x)] - x[length(x) - 1])
+
+    if (length(cdf) > 2) {
+      interior <- 2:(length(cdf) - 1)
+      density[interior] <- (cdf[interior + 1] - cdf[interior - 1]) /
+        (x[interior + 1] - x[interior - 1])
+    }
+
+    return(pmax(density, 0))
+  }
+
   mid=(l+r)/2
   vu <- sort(runif(nsample))
   vu[order(mid)] <- vu # initialize an u, Lines 1-3
@@ -75,8 +97,16 @@ fiducial <- function(l, r, nsample, grid, testgrid, mfid = 1000, mburn = 100) {
   FiducialMidLine1= apply(linefid1,1,function(x){approx(grid,x,testgrid, method = 'linear', rule = 2)$y})
   linefidi=apply(FiducialMidLine1,1,sort)
   point_li=linefidi[mfid*0.5,] # point estimator based on linear interpolation
+  density_samples <- t(apply(FiducialMidLine1, 2, cdf_to_density, x = testgrid))
+  densityi <- apply(density_samples, 2, sort)
+  point_density <- cdf_to_density(point_li, testgrid)
 
-  return(list(point_li = point_li, lower = linefidi[mfid * 0.025, ], upper = linefidi[mfid * 0.975, ]))
+  return(list(point_li = point_li,
+              lower = linefidi[mfid * 0.025, ],
+              upper = linefidi[mfid * 0.975, ],
+              density = point_density,
+              density_lower = densityi[mfid * 0.025, ],
+              density_upper = densityi[mfid * 0.975, ]))
 }
 
 

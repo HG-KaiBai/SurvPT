@@ -1,9 +1,9 @@
 devtools::load_all()
 library(interval)
-K = 1
+K = 2
 Lambda = 0.12
-
-test_data = data_rc(seed = 123, n = 200, K = K, Lambda = Lambda, q = 0.3)
+n = 500
+test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
 exp_par = estimate_exp(test_data[,1], test_data[,2])
 weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
@@ -41,6 +41,8 @@ for (l in 0:9){
 }
 print(sum(result1$Posterior_Probs[result1$Terminal_Nodes]))
 
+grid = result$Test_seq
+fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
 
 
 kmf = icfit(test_data$L, test_data$R)
@@ -48,12 +50,15 @@ plot(kmf)
 lines(result$Test_seq, result$Survival_Probs, col = "blue", lwd = 2)
 lines(result1$Test_seq, result1$Survival_Probs, col = "green", lwd = 2)
 lines(result$Test_seq, 1-pweibull(result$Test_seq, K, 1/Lambda), col = "red", lwd = 2)
-legend("topright", legend = c("Kaplan-Meier", "SurvPT Estimate", "OPT Estimate", "True Survival"), col = c("black", "blue", "green" ,"red"), lwd = 2)
+lines(grid, 1 - fid$point_li, col = "purple", lwd = 2)
+legend("topright", legend = c("Kaplan-Meier", "SurvPT Estimate", "OPT Estimate", "True Survival", "Fiducial"),
+       col = c("black", "blue", "green" ,"red", "purple"), lwd = 2)
 
 
 plot(result$Test_seq, dweibull(result$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
 lines(result$Test_seq, result$Density, col = "blue", lwd = 2)
 lines(result1$Test_seq, result1$Density, col = "green", lwd = 2)
+lines(grid, fid$density, col = "purple", lwd = 2)
 
 
 
