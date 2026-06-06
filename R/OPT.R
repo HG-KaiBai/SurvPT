@@ -44,7 +44,8 @@ survOPT <- function(X, delta, test_seq = NULL, Rho = 0.5, support = c(0, Inf), m
                   "Posterior_Probs" = out$posterior_probs,
                   "Terminal_Nodes" = out$terminal_nodes + 1,
                   "Test_seq" = test_seq,
-                  "Survival_Probs" = out$survival_probs
+                  "Survival_Probs" = out$survival_probs,
+                  "Density" = out$density_probs
                   )
     return(out_PT)
 }

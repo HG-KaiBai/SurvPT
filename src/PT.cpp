@@ -73,8 +73,8 @@ void PT::init() {
         int level = node_levels(i);
 
         double split_point = choose_split(level, left_bound(i), right_bound(i));
-        // if (split_point < 0 || n_obs_allocated(i) < 1) {
-        if (split_point < 0) {
+        if (split_point < 0 || n_obs_allocated(i) < 1) {
+        // if (split_point < 0) {
             terminal_nodes.insert_rows(terminal_nodes.n_rows, vec({(double)i}));
             continue; // no split
         }
@@ -515,8 +515,9 @@ void PT::update_tree_size() {
 
 
 List PT::output() {
-    // compute survival probabilities at test_seq by mixing over terminal nodes
+    // compute survival probabilities and densities at test_seq by mixing over terminal nodes
     survival_probs = vec(test_seq.n_elem, fill::zeros);
+    vec density_probs(test_seq.n_elem, fill::zeros);
 
     auto base_survival = [&](double x) -> double {
         if (prior == 2) {
@@ -526,6 +527,19 @@ List PT::output() {
             const double lambda = prior_params(0);
             const double k = prior_params(1);
             return exp(-pow(lambda * x, k));
+        }
+        Rcpp::stop("Invalid prior type.");
+        return 0.0;
+    };
+
+    auto base_density = [&](double x) -> double {
+        if (prior == 2) {
+            const double lambda = prior_params(0);
+            return lambda * exp(-lambda * x);
+        } else if (prior == 3) {
+            const double lambda = prior_params(0);
+            const double k = prior_params(1);
+            return k * lambda * pow(lambda * x, k - 1.0) * exp(-pow(lambda * x, k));
         }
         Rcpp::stop("Invalid prior type.");
         return 0.0;
@@ -554,15 +568,44 @@ List PT::output() {
         return 0.0;
     };
 
+    auto terminal_density = [&](double t, double a, double b) -> double {
+        if (prior == 1) {
+            double right = b;
+            if (!arma::is_finite(right)) {
+                right = arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
+            }
+            const double width = right - a;
+            if (width > SMALL_VALUE && t >= a && t < right) {
+                return 1.0 / width;
+            }
+            return 0.0;
+        }
+
+        if (t < a || (arma::is_finite(b) && t >= b)) {
+            return 0.0;
+        }
+
+        const double survival_a = base_survival(a);
+        const double survival_b = arma::is_finite(b) ? base_survival(b) : 0.0;
+        const double denom = survival_a - survival_b;
+        if (denom > SMALL_VALUE) {
+            return base_density(t) / denom;
+        }
+        return 0.0;
+    };
+
     for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
         const double t = test_seq(i);
         double s = 0.0;
+        double d = 0.0;
 
         for (arma::uword r = 0; r < terminal_nodes.n_rows; ++r) {
             const int node = static_cast<int>(terminal_nodes(r));
             const double a = left_bound(node);
             double b = right_bound(node);
             const double w = posterior_probs(node);
+
+            d += w * terminal_density(t, a, b);
 
             if (t < a) {
                 s += w;
@@ -575,6 +618,7 @@ List PT::output() {
 
         // clamp numeric noise
         survival_probs(i) = s;
+        density_probs(i) = d;
     }
 
     return List::create(
@@ -585,7 +629,8 @@ List PT::output() {
         Named("n_obs_allocated") = n_obs_allocated.head(nodes_used+1),
         Named("posterior_probs") = posterior_probs.head(nodes_used+1),
         Named("terminal_nodes") = terminal_nodes,
-        Named("survival_probs") = survival_probs
+        Named("survival_probs") = survival_probs,
+        Named("density_probs") = density_probs
     );
 }
 

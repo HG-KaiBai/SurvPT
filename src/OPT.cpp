@@ -618,18 +618,27 @@ void OPT::update_tree_size() {
 
 
 List OPT::output() {
-    // compute survival probabilities at test_seq by mixing over terminal nodes
+    // compute survival probabilities and densities at test_seq by mixing over terminal nodes
     survival_probs = vec(test_seq.n_elem, fill::zeros);
+    vec density_probs(test_seq.n_elem, fill::zeros);
 
     for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
         const double t = test_seq(i);
         double s = 0.0;
+        double d = 0.0;
 
         for (arma::uword r = 0; r < terminal_nodes.n_rows; ++r) {
             const int node = static_cast<int>(terminal_nodes(r));
             const double a = left_bound(node);
             double b = right_bound(node);
             const double w = posterior_probs(node);
+
+            if (arma::is_finite(b)) {
+                const double width = b - a;
+                if (width > SMALL_VALUE && t >= a && t < b) {
+                    d += w / width;
+                }
+            }
 
             if (t < a) {
                 s += w;
@@ -649,6 +658,7 @@ List OPT::output() {
 
         // clamp numeric noise
         survival_probs(i) = s;
+        density_probs(i) = d;
     }
 
     return List::create(
@@ -659,7 +669,8 @@ List OPT::output() {
         Named("n_obs_allocated") = n_obs_allocated.head(nodes_used+1),
         Named("posterior_probs") = posterior_probs.head(nodes_used+1),
         Named("terminal_nodes") = terminal_nodes,
-        Named("survival_probs") = survival_probs
+        Named("survival_probs") = survival_probs,
+        Named("density_probs") = density_probs
     );
 }
 

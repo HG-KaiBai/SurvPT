@@ -3,7 +3,7 @@ library(interval)
 K = 1
 Lambda = 0.12
 
-test_data = data_rc(seed = 992, n = 200, K = K, Lambda = Lambda, q = 0.3)
+test_data = data_rc(seed = 123, n = 200, K = K, Lambda = Lambda, q = 0.3)
 exp_par = estimate_exp(test_data[,1], test_data[,2])
 weib_par = estimate(test_data[,1], test_data[,2])
 # Try calling the function with basic parameters
@@ -51,12 +51,9 @@ lines(result$Test_seq, 1-pweibull(result$Test_seq, K, 1/Lambda), col = "red", lw
 legend("topright", legend = c("Kaplan-Meier", "SurvPT Estimate", "OPT Estimate", "True Survival"), col = c("black", "blue", "green" ,"red"), lwd = 2)
 
 
-result$density = abs(diff(result$Survival_Probs)) / diff(result$Test_seq)
-result1$density = abs(diff(result1$Survival_Probs)) / diff(result1$Test_seq)
-
 plot(result$Test_seq, dweibull(result$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
-lines(result$Test_seq[-200], result$density, col = "blue", lwd = 2)
-lines(result1$Test_seq[-200], result1$density, col = "green", lwd = 2)
+lines(result$Test_seq, result$Density, col = "blue", lwd = 2)
+lines(result1$Test_seq, result1$Density, col = "green", lwd = 2)
 
 
 

@@ -53,7 +53,8 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
                   "Posterior_Probs" = out$posterior_probs,
                   "Terminal_Nodes" = out$terminal_nodes + 1,
                   "Test_seq" = test_seq,
-                  "Survival_Probs" = out$survival_probs
+                  "Survival_Probs" = out$survival_probs,
+                  "Density" = out$density_probs
                   )
     return(out_PT)
 }
