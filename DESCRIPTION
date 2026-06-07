@@ -1,7 +1,7 @@
 Package: SurvPT
 Type: Package
 Title: Estimate the Survival Function from Interval Censored Data by Polya Tree
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: c(
     person(
       "Yixing", "Zhao",
