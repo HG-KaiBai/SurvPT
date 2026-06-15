@@ -1,7 +1,7 @@
 Package: SurvPT
 Type: Package
 Title: Estimate the Survival Function from Interval Censored Data by Polya Tree
-Version: 0.1.1
+Version: 0.1.0
 Authors@R: c(
     person(
       "Yixing", "Zhao",
@@ -9,8 +9,7 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: More about what it does (maybe more than one line).
-    Continuation lines should be indented.
+Description: trunctated
 License: What license is it under?
 Encoding: UTF-8
 LazyData: true
