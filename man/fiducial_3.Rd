@@ -2,21 +2,36 @@
 % Please edit documentation in R/data_example.R
 \name{fiducial_3}
 \alias{fiducial_3}
-\title{Scenario 3 from Fiducial Approach paper (Cui et.al. 2024)}
+\title{Generate fiducial-comparison scenario 3: two inspection times}
 \usage{
 fiducial_3(t, n)
 }
 \arguments{
-\item{t}{Random seed}
+\item{t}{Integer random seed passed to \code{set.seed()}. Resets the global
+R random-number state.}
 
-\item{n}{Sample size}
+\item{n}{Positive integer sample size.}
 }
 \value{
-A data frame with two columns: L (left interval) and R (right interval)
+A data frame with \code{n} rows and columns \code{L} and \code{R}, suitable for
+\code{\link{survPT}()}. Infinite right endpoints indicate right-open observation
+intervals, not an exact event at infinity.
 }
 \description{
-Scenario 3 from Fiducial Approach paper (Cui et.al. 2024)
+Event times are gamma with shape 2 and rate 1. The first inspection is
+uniform on \verb{(0, 2)}; the second is the first plus \code{0.5} plus an independent
+uniform \verb{(0, 2)} draw. Intervals represent events before, between, or after
+the inspections. This function does not fit a fiducial estimator.
 }
 \examples{
-data = fiducial_3(t = 123, n = 100)
+head(fiducial_3(t = 123, n = 20))
+}
+\references{
+Cui, Y., Hannig, J., and Kosorok, M. R. (2024).
+A Unified Nonparametric Fiducial Approach to Interval-Censored Data.
+\emph{Journal of the American Statistical Association}, 119(547), 2230--2241.
+\doi{10.1080/01621459.2023.2252143}.
+}
+\seealso{
+\code{\link{fiducial_1}()}, \code{\link{fiducial_2}()}, \code{\link{fiducial_4}()}
 }

@@ -2,21 +2,35 @@
 % Please edit documentation in R/data_example.R
 \name{fiducial_1}
 \alias{fiducial_1}
-\title{Scenario 1 from Fiducial Approach paper (Cui et.al. 2024)}
+\title{Generate fiducial-comparison scenario 1: exponential current status}
 \usage{
 fiducial_1(t, n)
 }
 \arguments{
-\item{t}{Random seed}
+\item{t}{Integer random seed passed to \code{set.seed()}. Resets the global
+R random-number state.}
 
-\item{n}{Sample size}
+\item{n}{Positive integer sample size.}
 }
 \value{
-A data frame with two columns: L (left interval) and R (right interval)
+A data frame with \code{n} rows and columns \code{L} and \code{R}, suitable for
+\code{\link{survPT}()}. Infinite right endpoints indicate right-open observation
+intervals, not an exact event at infinity.
 }
 \description{
-Scenario 1 from Fiducial Approach paper (Cui et.al. 2024)
+Generate current-status intervals from independent rate-one exponential
+event and inspection times. This function generates data; it does not fit
+a fiducial estimator.
 }
 \examples{
-data = fiducial_1(t = 123, n = 100)
+head(fiducial_1(t = 123, n = 20))
+}
+\references{
+Cui, Y., Hannig, J., and Kosorok, M. R. (2024).
+A Unified Nonparametric Fiducial Approach to Interval-Censored Data.
+\emph{Journal of the American Statistical Association}, 119(547), 2230--2241.
+\doi{10.1080/01621459.2023.2252143}.
+}
+\seealso{
+\code{\link{fiducial_2}()}, \code{\link{fiducial_3}()}, \code{\link{fiducial_4}()}
 }

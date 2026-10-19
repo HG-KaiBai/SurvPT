@@ -2,20 +2,31 @@
 % Please edit documentation in R/MLE_estimate.R
 \name{loglike_exp}
 \alias{loglike_exp}
-\title{loglikelihood function for Exponential distribution}
+\title{Exponential negative log-likelihood for censored observations}
 \usage{
 loglike_exp(theta, LB, RB)
 }
 \arguments{
-\item{theta}{parameter vector (rate)}
+\item{theta}{Positive exponential rate, supplied as a length-one vector.}
 
-\item{LB}{left bound of data}
+\item{LB}{Numeric vector of finite nonnegative left endpoints.}
 
-\item{RB}{right bound of data}
+\item{RB}{Numeric vector of right endpoints, the same length as \code{LB}.
+Use \code{RB == LB} for exact events and \code{Inf} for right censoring. Exact event
+times should be positive. Missing values are not supported.}
 }
 \value{
-negative log-likelihood value
+Scalar negative log-likelihood. Extreme parameters can produce
+nonfinite results because direct exponential differences are used.
 }
 \description{
-loglikelihood function for Exponential distribution
+Internal objective used by \code{\link{estimate_exp}()}, with exact, finite-interval,
+and right-censored contributions.
 }
+\details{
+This helper is not exported. Use \code{\link{estimate_exp}()} for fitting.
+}
+\seealso{
+\code{\link{gradient_exp}()}, \code{\link{estimate_exp}()}
+}
+\keyword{internal}

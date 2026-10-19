@@ -2,28 +2,47 @@
 % Please edit documentation in R/data_example.R
 \name{data_ic}
 \alias{data_ic}
-\title{Create the Interval Censored Test Data from Weibull Distribution}
+\title{Simulate interval-censored Weibull event times}
 \usage{
 data_ic(seed, n, K, Lambda, q = 0.3)
 }
 \arguments{
-\item{seed}{Random seed}
+\item{seed}{Integer random seed passed to \code{set.seed()}. The generator resets
+the global R random-number state.}
 
-\item{n}{Sample size}
+\item{n}{Positive integer sample size.}
 
-\item{K}{Weibull shape parameter}
+\item{K}{Positive Weibull shape parameter.}
 
-\item{Lambda}{Weibull rate parameter}
+\item{Lambda}{Positive Weibull inverse-scale parameter. This is a rate only
+when \code{K = 1}; use \code{scale = 1 / Lambda} with \code{\link[stats:Weibull]{stats::rweibull()}}.}
 
-\item{q}{Right Censoring rate}
+\item{q}{Target probability that the censoring or inspection time precedes
+the event, with \verb{0 < q < 1}. This determines the time distribution, not an
+exact realized sample proportion.}
 }
 \value{
-A data frame with three columns: L (left interval), R (right interval), and status (1 if event observed, 0 if censored)
+A data frame with \code{L}, \code{R}, and \code{status}. Right-censored rows have
+\code{R = Inf}; finite intervals bracket the event time. \code{status} tests \code{L == R}
+and does not indicate whether the event occurred before censoring. Pass
+\code{L} and \code{R} to \code{\link{survPT}()}.
 }
 \description{
-Create the Interval Censored Test Data from Weibull Distribution
+Generate Weibull event times, independent censoring times, and random
+inspections before censoring. Observations are returned as interval endpoints.
+}
+\details{
+Event and censoring distributions are as in \code{\link{data_rc}()}. For events
+before censoring, the inspection count is drawn with
+\code{rnbinom(1, size = 3, prob = 0.25)} and inspections are uniform before the
+censoring time. The legacy loop uses \code{1:Ri}; when \code{Ri} is zero this executes
+two iterations rather than none. This behavior is retained and should be
+considered when interpreting simulation results.
 }
 \examples{
-data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-data_cs(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+d <- data_ic(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
+head(d[, c("L", "R")])
+}
+\seealso{
+\code{\link{data_rc}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 }

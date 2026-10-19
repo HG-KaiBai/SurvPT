@@ -1,0 +1,17 @@
+SurvPT 0.2.0
+
+* PT EM updates now integrate the selected conditional base distribution in
+  each terminal interval, using the same probability calculation as the
+  returned survival function. Exponential and Weibull leaves no longer use
+  uniform overlap fractions during EM updates.
+* Uniform leaves with an infinite right endpoint use the same finite tail
+  cutoff in EM updates and output. Exponential and Weibull tails remain
+  unbounded. OPT behavior is unchanged.
+* Add regression tests for conditional allocations, output distributions,
+  finite and infinite supports, tail behavior, and probability conservation.
+* Expand English installation, usage, method, limitation, and developer guides;
+  document all exported functions and add a small runnable quickstart.
+* Add verified OPT citations to the guides, function help, R citation metadata,
+  and CITATION.cff. Clarify the univariate scope of the current OPT interface.
+* Replace the license placeholder with a private-repository permission-status
+  notice. No software license or redistribution permission is granted.

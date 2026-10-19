@@ -2,28 +2,43 @@
 % Please edit documentation in R/data_example.R
 \name{data_rc}
 \alias{data_rc}
-\title{Create the Right Censored Test Data from Weibull Distribution}
+\title{Simulate right-censored Weibull event times}
 \usage{
 data_rc(seed, n, K, Lambda, q = 0.3)
 }
 \arguments{
-\item{seed}{Random seed}
+\item{seed}{Integer random seed passed to \code{set.seed()}. The generator resets
+the global R random-number state.}
 
-\item{n}{Sample size}
+\item{n}{Positive integer sample size.}
 
-\item{K}{Weibull shape parameter}
+\item{K}{Positive Weibull shape parameter.}
 
-\item{Lambda}{Weibull rate parameter}
+\item{Lambda}{Positive Weibull inverse-scale parameter. This is a rate only
+when \code{K = 1}; use \code{scale = 1 / Lambda} with \code{\link[stats:Weibull]{stats::rweibull()}}.}
 
-\item{q}{Right Censoring rate}
+\item{q}{Target probability that the censoring or inspection time precedes
+the event, with \verb{0 < q < 1}. This determines the time distribution, not an
+exact realized sample proportion.}
 }
 \value{
-A data frame with three columns: L (observed time), R (right censoring time), and status (1 if event observed, 0 if censored)
+A data frame with \code{n} rows and columns \code{L} (observed follow-up time),
+\code{R} (equal to \code{L} for an exact event and \code{Inf} for right censoring), and
+\code{status} (\code{1} for an exact event, \code{0} for right censoring).
 }
 \description{
-Create the Right Censored Test Data from Weibull Distribution
+Generate independent Weibull event and censoring times with a common shape.
+Event times have shape \code{K} and scale \code{1 / Lambda}.
+}
+\details{
+The censoring inverse scale is
+\code{(Lambda^K * q / (1 - q))^(1 / K)}. Arguments are not fully validated.
 }
 \examples{
-data_rc(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
-data_ic(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+d <- data_rc(seed = 123, n = 20, K = 2, Lambda = 0.4, q = 0.3)
+head(d)
+mean(d$status == 0)
+}
+\seealso{
+\code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}, \code{\link{survOPT}()}
 }

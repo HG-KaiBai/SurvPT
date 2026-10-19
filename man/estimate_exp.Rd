@@ -2,22 +2,36 @@
 % Please edit documentation in R/MLE_estimate.R
 \name{estimate_exp}
 \alias{estimate_exp}
-\title{Estimate the parameter of Exponential distribution using MLE}
+\title{Fit an exponential distribution to censored event times}
 \usage{
 estimate_exp(LB, RB)
 }
 \arguments{
-\item{LB}{left bound of data}
+\item{LB}{Numeric vector of finite nonnegative left endpoints.}
 
-\item{RB}{right bound of data}
+\item{RB}{Numeric vector of right endpoints, the same length as \code{LB}.
+Use \code{RB == LB} for exact events and \code{Inf} for right censoring. Exact event
+times should be positive. Missing values are not supported.}
 }
 \value{
-estimated parameter (rate)
+A length-one numeric vector containing the estimated rate. Its
+reciprocal is the exponential mean.
 }
 \description{
-Estimate the parameter of Exponential distribution using MLE
+Minimize the negative log-likelihood with an analytic gradient using
+\code{stats::optim()} and the \code{L-BFGS-B} method.
+}
+\details{
+The starting rate is \code{0.01} and the lower bound is \code{0.001}.
+The result can be passed to \code{\link{survPT}()} with \code{prior = 2}. Only the
+optimizer's parameter estimate is returned; convergence status, standard
+errors, and objective values are not exposed. A returned value alone does
+not establish convergence or identifiability.
 }
 \examples{
-data = data_cs(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-estimate_exp(data$L, data$R)
+d <- data_rc(seed = 123, n = 30, K = 1, Lambda = 0.4, q = 0.3)
+estimate_exp(d$L, d$R)
+}
+\seealso{
+\code{\link{estimate}()}, \code{\link{survPT}()}
 }

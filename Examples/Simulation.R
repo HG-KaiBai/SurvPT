@@ -1,3 +1,6 @@
+# Historical large simulation: executes experiment loops when sourced.
+# See Examples/README.md; reduce replication/worker counts before a pilot run.
+# Requires SurvPT, survival, interval, and parallel; writes CSV output.
 library(SurvPT)
 library(survival)
 library(interval)

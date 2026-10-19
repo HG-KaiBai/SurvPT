@@ -2,20 +2,27 @@
 % Please edit documentation in R/MLE_estimate.R
 \name{gradient_exp}
 \alias{gradient_exp}
-\title{gradient of loglikelihood function for Exponential distribution}
+\title{Gradient of the exponential negative log-likelihood}
 \usage{
 gradient_exp(theta, LB, RB)
 }
 \arguments{
-\item{theta}{parameter vector (rate)}
+\item{theta}{Positive exponential rate, supplied as a length-one vector.}
 
-\item{LB}{left bound of data}
+\item{LB}{Numeric vector of finite nonnegative left endpoints.}
 
-\item{RB}{right bound of data}
+\item{RB}{Numeric vector of right endpoints, the same length as \code{LB}.
+Use \code{RB == LB} for exact events and \code{Inf} for right censoring. Exact event
+times should be positive. Missing values are not supported.}
 }
 \value{
-gradient vector
+A scalar derivative with respect to the exponential rate for the
+negative log-likelihood, not the positive log-likelihood.
 }
 \description{
-gradient of loglikelihood function for Exponential distribution
+Internal analytic gradient used by \code{\link{estimate_exp}()}.
 }
+\seealso{
+\code{\link{loglike_exp}()}, \code{\link{estimate_exp}()}
+}
+\keyword{internal}

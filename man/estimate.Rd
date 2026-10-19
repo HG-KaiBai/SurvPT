@@ -2,22 +2,39 @@
 % Please edit documentation in R/MLE_estimate.R
 \name{estimate}
 \alias{estimate}
-\title{Estimate the parameters of Weibull distribution using MLE}
+\title{Fit a Weibull distribution to censored event times}
 \usage{
 estimate(LB, RB)
 }
 \arguments{
-\item{LB}{left bound of data}
+\item{LB}{Numeric vector of finite nonnegative left endpoints.}
 
-\item{RB}{right bound of data}
+\item{RB}{Numeric vector of right endpoints, the same length as \code{LB}.
+Use \code{RB == LB} for exact events and \code{Inf} for right censoring. Exact event
+times should be positive. Missing values are not supported.}
 }
 \value{
-estimated parameter vector (rate, shape)
+Numeric vector \code{c(lambda, k)} of estimated inverse scale and shape.
 }
 \description{
-Estimate the parameters of Weibull distribution using MLE
+Minimize the negative log-likelihood of exact and censored observations
+using \code{stats::optim()} with the \code{L-BFGS-B} method and an analytic gradient.
+}
+\details{
+The initial parameter vector is \code{c(0.01, 1)} and lower bounds are
+\code{c(0.001, 0.01)}. These controls are fixed by the current implementation.
+Weibull survival is \code{exp(-(lambda * t)^k)}, equivalent to R's Weibull with
+\verb{shape = k, scale = 1 / lambda}. The result can be passed as \code{prior_params}
+to \code{\link{survPT}()} with \code{prior = 3}.
+
+Only the optimizer's parameter estimates are returned: convergence codes,
+objective values, standard errors, and Hessians are not exposed. A returned
+parameter vector alone does not establish convergence or identifiability.
 }
 \examples{
-data = data_cs(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
-estimate(data$L, data$R)
+d <- data_rc(seed = 123, n = 30, K = 2, Lambda = 0.4, q = 0.3)
+estimate(d$L, d$R)
+}
+\seealso{
+\code{\link{estimate_exp}()}, \code{\link{survPT}()}
 }

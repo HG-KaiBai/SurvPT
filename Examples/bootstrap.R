@@ -1,3 +1,6 @@
+# Historical comparison helpers; see Examples/README.md.
+# Attach SurvPT, interval, and boot before use. The bootstrap summary assumes
+# three evaluation times and three estimators; it is not a general API.
 fit_turnbull <- function(times, mod) {
   last_partition <- mod$intmap[, ncol(mod$intmap)]
   if (is.finite(last_partition[2])) {

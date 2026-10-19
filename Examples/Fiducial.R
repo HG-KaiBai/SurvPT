@@ -1,4 +1,8 @@
-# R code for Algorithm 1 of "A unified nonparametric fiducial approach to interval-censored data, Cui et al. (2023)"
+# Experimental comparison implementation related to Algorithm 1 in Cui, Hannig,
+# and Kosorok (2024), "A Unified Nonparametric Fiducial Approach to
+# Interval-Censored Data", doi:10.1080/01621459.2023.2252143.
+# Online publication was in 2023. Local modifications are not certified as a
+# reproduction. Source LinInterpolation.R first; see Examples/README.md.
 #########
 
 fiducial <- function(l, r, nsample, grid, testgrid, mfid = 1000, mburn = 100) {

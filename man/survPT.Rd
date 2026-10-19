@@ -2,7 +2,7 @@
 % Please edit documentation in R/PT.R
 \name{survPT}
 \alias{survPT}
-\title{Fit the Polya tree for Interval censored Data}
+\title{Fit a finite Polya tree to censored event times}
 \usage{
 survPT(
   X,
@@ -18,33 +18,96 @@ survPT(
 )
 }
 \arguments{
-\item{X}{Data frame with three columns: L (left interval), R (right interval), and status (1 if event observed, 0 if censored)}
+\item{X}{Numeric matrix or data frame whose first two columns contain the
+left and right observation endpoints, in that order. Additional columns
+are ignored. Use \code{L == R} for an exact event, \code{R = Inf} for right censoring,
+and \code{L = 0} for an event observed before a positive inspection time.
+A status column is not used. Missing values are not supported.}
 
-\item{test_seq}{Sequence of test points for survival probability estimation (optional)}
+\item{test_seq}{Numeric evaluation points, preferably a sorted finite grid.
+If \code{NULL}, uses 200 points from \code{support[1]} to the largest endpoint among
+rows with finite right endpoints. Supply a grid explicitly when no such
+rows exist or when comparing fits.}
 
-\item{prior}{Prior type, (1: Uniform, 2: Exponential, 3: Weibull)}
+\item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
+or \code{3} for Weibull.}
 
-\item{support}{Support type, "Finite" or "Infinite"}
+\item{support}{Numeric vector \code{c(lower, upper)} with \code{lower < upper}.
+The default is \code{c(0, Inf)}. Use nonnegative time support and observation
+intervals compatible with it. A finite bound is a modeling assumption.}
 
-\item{max_M}{Maximum level of the Polya tree}
+\item{max_M}{Nonnegative integer maximum tree depth; the root is level zero.
+A node also stops splitting if its initial allocated count is below one.
+Large depths can require excessive memory; start with a modest value.}
 
-\item{prior_params}{Prior parameters, a vector of length 2}
+\item{prior_params}{\code{NULL} for uniform (ignored), one positive rate \code{lambda}
+for exponential, or two positive values \code{c(lambda, k)} for Weibull.
+The Weibull shape is \code{k} and scale is \code{1 / lambda}.}
 
-\item{allocated}{Logical, whether to use allocated version}
+\item{allocated}{\code{1} (default) for fractional allocation with EM updates;
+\code{0} for the legacy overlap-count initialization without EM.}
 
-\item{max_EM_iter}{Maximum number of EM iterations}
+\item{max_EM_iter}{Nonnegative integer maximum number of EM updates.
+Zero returns the initialized fit.}
 
-\item{EM_tol}{Tolerance for EM convergence}
+\item{EM_tol}{Nonnegative stopping tolerance for the Euclidean norm of the
+change in terminal-node masses. No convergence flag is returned.}
 
-\item{verbose}{Logical, whether to print progress messages}
+\item{verbose}{Logical; print iteration progress if \code{TRUE}.}
 }
 \value{
-A list with the following components: Left (left interval), Right (right interval), Alpha (prior parameters), Allocations (number of observations allocated to each partition), Posterior_Probs (posterior probabilities for each partition)
+A list with the following components. Armadillo vectors can appear
+as one-column matrices; use \code{as.numeric()} if a plain vector is needed.
+\describe{
+\item{Left, Right}{Node interval boundaries.}
+\item{Level}{Node depths, with the root at zero.}
+\item{Allocations}{Allocated observation counts, possibly fractional.}
+\item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
+\item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
+masses at these indices to check total probability.}
+\item{Test_seq}{The evaluation grid.}
+\item{Survival_Probs}{Estimated survival probabilities at the grid.}
+\item{Density}{Estimated density at the grid.}
+}
+The wrapper does not return \code{Alpha}, posterior samples, or convergence
+diagnostics.
 }
 \description{
-Fit the Polya tree for Interval censored Data
+Estimate a univariate survival function and density from exact, interval-
+censored, right-censored, or current-status observations. The partition is
+fixed after initialization; the default fit iteratively reallocates censored
+observations using conditional terminal-node base distributions.
+}
+\details{
+Since version 0.2.0, EM allocation probabilities and the returned survival
+function and density use the same selected base distribution conditioned on
+each terminal interval. The exponential base survival is \code{exp(-lambda * t)};
+the Weibull base survival is \code{exp(-(lambda * t)^k)}.
+A uniform terminal interval with an infinite right endpoint is capped at
+1.1 times the largest finite endpoint in the first two columns of \code{X}.
+Exponential and Weibull terminal intervals retain their infinite tails.
+This cutoff does not replace \code{Inf} in the returned \code{Right} boundaries.
+
+Intervals represent \verb{(L, R]}, with exact events treated separately. Exact
+events must lie strictly above the root's lower endpoint. Input validation
+is incomplete: check numeric types, missing values, endpoint ordering,
+support compatibility, and integer iteration controls before fitting.
+
+Branch masses use a clipped, mode-style update with depth-dependent prior
+parameters, not posterior draws or the usual posterior-mean update.
+The function does not estimate uncertainty intervals, covariate effects,
+multivariate distributions, or a sampling-truncation likelihood.
 }
 \examples{
-data <- data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-out <- survPT(X = data)
+x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
+                R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
+fit <- survPT(x, prior = 2, prior_params = 0.5,
+              test_seq = seq(0, 6, length.out = 31),
+              max_M = 4, max_EM_iter = 30, verbose = FALSE)
+sum(fit$Posterior_Probs[fit$Terminal_Nodes])
+head(as.numeric(fit$Survival_Probs))
+}
+\seealso{
+\code{\link{survOPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
+\code{\link{SurvPT}()} for the low-level interface.
 }

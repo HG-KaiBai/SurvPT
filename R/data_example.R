@@ -1,17 +1,29 @@
-#' Create the Right Censored Test Data from Weibull Distribution
+#' Simulate right-censored Weibull event times
 #'
-#' @param seed Random seed
-#' @param n Sample size
-#' @param K Weibull shape parameter
-#' @param Lambda Weibull rate parameter
-#' @param q Right Censoring rate
+#' Generate independent Weibull event and censoring times with a common shape.
+#' Event times have shape `K` and scale `1 / Lambda`.
 #'
-#' @returns A data frame with three columns: L (observed time), R (right censoring time), and status (1 if event observed, 0 if censored)
+#' @param seed Integer random seed passed to `set.seed()`. The generator resets
+#'   the global R random-number state.
+#' @param n Positive integer sample size.
+#' @param K Positive Weibull shape parameter.
+#' @param Lambda Positive Weibull inverse-scale parameter. This is a rate only
+#'   when `K = 1`; use `scale = 1 / Lambda` with [stats::rweibull()].
+#' @param q Target probability that the censoring or inspection time precedes
+#'   the event, with `0 < q < 1`. This determines the time distribution, not an
+#'   exact realized sample proportion.
+#' @details The censoring inverse scale is
+#'   `(Lambda^K * q / (1 - q))^(1 / K)`. Arguments are not fully validated.
+#' @return A data frame with `n` rows and columns `L` (observed follow-up time),
+#'   `R` (equal to `L` for an exact event and `Inf` for right censoring), and
+#'   `status` (`1` for an exact event, `0` for right censoring).
+#' @seealso \code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}, \code{\link{survOPT}()}
 #' @export
 #'
 #' @examples
-#' data_rc(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
-#' data_ic(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+#' d <- data_rc(seed = 123, n = 20, K = 2, Lambda = 0.4, q = 0.3)
+#' head(d)
+#' mean(d$status == 0)
 data_rc <- function(seed, n, K, Lambda, q = 0.3){
   death = c()
   censor = c()
@@ -27,20 +39,28 @@ data_rc <- function(seed, n, K, Lambda, q = 0.3){
   return(data)
 }
 
-#' Create the Interval Censored Test Data from Weibull Distribution
+#' Simulate interval-censored Weibull event times
 #'
-#' @param seed Random seed
-#' @param n Sample size
-#' @param K Weibull shape parameter
-#' @param Lambda Weibull rate parameter
-#' @param q Right Censoring rate
+#' Generate Weibull event times, independent censoring times, and random
+#' inspections before censoring. Observations are returned as interval endpoints.
 #'
-#' @returns A data frame with three columns: L (left interval), R (right interval), and status (1 if event observed, 0 if censored)
+#' @inheritParams data_rc
+#' @details Event and censoring distributions are as in \code{\link{data_rc}()}. For events
+#'   before censoring, the inspection count is drawn with
+#'   `rnbinom(1, size = 3, prob = 0.25)` and inspections are uniform before the
+#'   censoring time. The legacy loop uses `1:Ri`; when `Ri` is zero this executes
+#'   two iterations rather than none. This behavior is retained and should be
+#'   considered when interpreting simulation results.
+#' @return A data frame with `L`, `R`, and `status`. Right-censored rows have
+#'   `R = Inf`; finite intervals bracket the event time. `status` tests `L == R`
+#'   and does not indicate whether the event occurred before censoring. Pass
+#'   `L` and `R` to \code{\link{survPT}()}.
+#' @seealso \code{\link{data_rc}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 #' @export
 #'
 #' @examples
-#' data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-#' data_cs(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+#' d <- data_ic(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
+#' head(d[, c("L", "R")])
 data_ic <- function(seed, n, K, Lambda, q = 0.3){
   lb = c()
   rb = c()
@@ -76,20 +96,27 @@ data_ic <- function(seed, n, K, Lambda, q = 0.3){
 }
 
 
-#' Create the Current Status Test Data from Weibull Distribution
+#' Simulate current-status observations of Weibull event times
 #'
-#' @param seed Random seed
-#' @param n Sample size
-#' @param K Weibull shape parameter
-#' @param Lambda Weibull rate parameter
-#' @param q Right Censoring rate
+#' Observe only whether an event has occurred by an independent inspection time.
 #'
-#' @returns A data frame with four columns: time (observation time), status (1 if event observed, 0 if censored), L (left interval), and R (right interval)
+#' @inheritParams data_rc
+#' @details Event and inspection times use the Weibull distributions described
+#'   in \code{\link{data_rc}()}. The returned `status` column is currently overwritten with
+#'   `as.numeric(L == R)`: it is not the event-by-inspection indicator. For
+#'   positive inspection times, recover that indicator with
+#'   `as.integer(L == 0 & is.finite(R))`. Current-status data must be fitted via
+#'   interval endpoints in \code{\link{survPT}()}, not as right-censored data in \code{\link{survOPT}()}.
+#' @return A data frame with columns, in order, `L`, `R`, `time`, and `status`.
+#'   If the event precedes inspection, the interval is `(0, time]`; otherwise
+#'   it is `(time, Inf)`. See Details for the legacy `status` behavior.
+#' @seealso \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{survPT}()}
 #' @export
 #'
 #' @examples
-#' data_cs(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-#' data_cs(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+#' d <- data_cs(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
+#' observed_by_inspection <- as.integer(d$L == 0 & is.finite(d$R))
+#' head(data.frame(d[, c("L", "R", "time")], observed_by_inspection))
 data_cs <- function(seed, n, K, Lambda, q = 0.3){
   Lambda_c = ((Lambda^K) / (1-q) - Lambda^K)^(1/K)
   set.seed(seed)
@@ -106,16 +133,28 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
 
 
 
-#' Scenario 1 from Fiducial Approach paper (Cui et.al. 2024)
+#' Generate fiducial-comparison scenario 1: exponential current status
 #'
-#' @param t Random seed
-#' @param n Sample size
+#' Generate current-status intervals from independent rate-one exponential
+#' event and inspection times. This function generates data; it does not fit
+#' a fiducial estimator.
 #'
-#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @param t Integer random seed passed to `set.seed()`. Resets the global
+#'   R random-number state.
+#' @param n Positive integer sample size.
+#' @return A data frame with `n` rows and columns `L` and `R`, suitable for
+#'   \code{\link{survPT}()}. Infinite right endpoints indicate right-open observation
+#'   intervals, not an exact event at infinity.
+#' @references
+#' Cui, Y., Hannig, J., and Kosorok, M. R. (2024).
+#' A Unified Nonparametric Fiducial Approach to Interval-Censored Data.
+#' \emph{Journal of the American Statistical Association}, 119(547), 2230--2241.
+#' \doi{10.1080/01621459.2023.2252143}.
+#' @seealso \code{\link{fiducial_2}()}, \code{\link{fiducial_3}()}, \code{\link{fiducial_4}()}
 #' @export
 #'
 #' @examples
-#' data = fiducial_1(t = 123, n = 100)
+#' head(fiducial_1(t = 123, n = 20))
 fiducial_1 <- function(t, n){
   set.seed(t)
   T = rexp(n, rate = 1)
@@ -128,16 +167,19 @@ fiducial_1 <- function(t, n){
   return(data)
 }
 
-#' Scenario 2 from Fiducial Approach paper (Cui et.al. 2024)
+#' Generate fiducial-comparison scenario 2: gamma current status
 #'
-#' @param t Random seed
-#' @param n Sample size
+#' Event times have a gamma distribution with shape 3 and rate 1. Independent
+#' inspection times are uniform on `(0, 5)`. Only current status is observed.
+#' This function generates data; it does not fit a fiducial estimator.
 #'
-#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @inheritParams fiducial_1
+#' @inherit fiducial_1 return references
+#' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_3}()}, \code{\link{fiducial_4}()}
 #' @export
 #'
 #' @examples
-#' data = fiducial_2(t = 123, n = 100)
+#' head(fiducial_2(t = 123, n = 20))
 fiducial_2 <- function(t, n){
   set.seed(t)
   T = rgamma(n, 3, 1)
@@ -150,16 +192,20 @@ fiducial_2 <- function(t, n){
   return(data)
 }
 
-#' Scenario 3 from Fiducial Approach paper (Cui et.al. 2024)
+#' Generate fiducial-comparison scenario 3: two inspection times
 #'
-#' @param t Random seed
-#' @param n Sample size
+#' Event times are gamma with shape 2 and rate 1. The first inspection is
+#' uniform on `(0, 2)`; the second is the first plus `0.5` plus an independent
+#' uniform `(0, 2)` draw. Intervals represent events before, between, or after
+#' the inspections. This function does not fit a fiducial estimator.
 #'
-#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @inheritParams fiducial_1
+#' @inherit fiducial_1 return references
+#' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_2}()}, \code{\link{fiducial_4}()}
 #' @export
 #'
 #' @examples
-#' data = fiducial_3(t = 123, n = 100)
+#' head(fiducial_3(t = 123, n = 20))
 fiducial_3 <- function(t, n){
   set.seed(t)
   T = rgamma(n, 2, 1)
@@ -172,16 +218,21 @@ fiducial_3 <- function(t, n){
   return(data)
 }
 
-#' Scenario 4 from Fiducial Approach paper (Cui et.al. 2024)
+#' Generate fiducial-comparison scenario 4: random inspection counts
 #'
-#' @param t Random seed
-#' @param n Sample size
+#' Event times are exponential with rate 1. Each subject has one to four
+#' inspections, selected with equal probabilities; inspection times are uniform
+#' on `(0, 3)` and sorted. The returned interval brackets the event, with zero
+#' or infinity used outside the inspection range. This function does not fit
+#' a fiducial estimator.
 #'
-#' @returns A data frame with two columns: L (left interval) and R (right interval)
+#' @inheritParams fiducial_1
+#' @inherit fiducial_1 return references
+#' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_2}()}, \code{\link{fiducial_3}()}
 #' @export
 #'
 #' @examples
-#' data = fiducial_4(t = 123, n = 100)
+#' head(fiducial_4(t = 123, n = 20))
 fiducial_4 <- function(t, n){
   set.seed(t)
   T = rexp(n, 1)
