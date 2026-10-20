@@ -1,8 +1,9 @@
 # SurvPT
 
 [![Install from GitHub](https://img.shields.io/badge/Install-GitHub-181717?logo=github&logoColor=white)](#install-from-github)
-[![Download](https://img.shields.io/badge/Download-GitHub-181717?logo=github&logoColor=white)](#download-from-github)
-[![View](https://img.shields.io/badge/View-GitHub-181717?logo=github&logoColor=white)](https://github.com/HG-KaiBai/SurvPT)
+[![Downloads](https://img.shields.io/github/downloads/USERNAME/REPO/total?label=Downloads&logo=github&color=181717)](https://github.com/HG-KaiBai/SurvPT/releases)
+[![Views](https://view-counter.tobyhagan.com/?user=USERNAME/REPO&base=555555&accent=181717&text=white&flat=true)](https://github.com/HG-KaiBai/SurvPT)
+  
 
 SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.0**.
 
