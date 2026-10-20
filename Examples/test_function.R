@@ -1,7 +1,6 @@
 # Historical interactive comparison; see Examples/README.md before running.
 # Requires devtools and interval. View() calls need an interactive session;
 # later fiducial plots also require constructing the currently commented-out fid.
-# OPT reference: Seok, Tian, and Wong (2014), doi:10.1093/biostatistics/kxt025.
 devtools::load_all()
 library(interval)
 K = 1

@@ -6,14 +6,17 @@ Authors@R: c(
     person(
       "Yixing", "Zhao",
       email = "y679zhao@uwaterloo.ca",
-      role = c("aut", "cre")
+      role = c("aut", "cre", "prg")
+    ),
+    person(
+      "Liqun", "Diao",
+      role = "aut"
     )
   )
 Description: Estimates survival functions from interval-censored observations
     using finite Polya trees with uniform, exponential or Weibull conditional
     base distributions and iterative allocation of censored observations.
-    Also provides optional Polya tree estimation for right-censored data.
-License: file LICENSE
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Imports: Rcpp (>= 1.1.0), stats

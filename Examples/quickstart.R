@@ -16,11 +16,6 @@ fits <- list(
                    max_M = 5, max_EM_iter = 50, verbose = FALSE)
 )
 
-# OPT: Seok, Tian, and Wong (2014), Biostatistics 15(1), 182-195.
-# DOI: 10.1093/biostatistics/kxt025. This interface is univariate/right-censored.
-fits$opt <- survOPT(d$L, d$status, test_seq = grid, max_M = 5,
-                    max_iter = 50, verbose = FALSE)
-
 checks <- do.call(rbind, lapply(names(fits), function(name) {
   fit <- fits[[name]]
   s <- as.numeric(fit$Survival_Probs)
@@ -35,7 +30,7 @@ checks <- do.call(rbind, lapply(names(fits), function(name) {
 
 print(checks, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
-cat("Uniform PT has a finite cutoff; infinite-support OPT can have a survival plateau.\n")
+cat("Uniform PT has a finite cutoff; exponential and Weibull bases retain unbounded tails.\n")
 
 # Optional plotting in an interactive R session:
 if (interactive()) {

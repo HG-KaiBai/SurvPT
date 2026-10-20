@@ -1,26 +1,12 @@
 cff-version: 1.2.0
-message: "Cite this software and, for OPT analyses, the Seok, Tian, and Wong article listed in references. This private repository requires permission for use and redistribution."
+message: "Cite this software when using SurvPT."
 title: "SurvPT: Survival Estimation with Finite Polya Trees"
 type: software
+license: MIT
 authors:
   - family-names: Zhao
     given-names: Yixing
+  - family-names: Diao
+    given-names: Liqun
 version: 0.2.0
 repository-code: "https://github.com/HG-KaiBai/SurvPT"
-references:
-  - type: article
-    title: "Density estimation on multivariate censored data with optional Pólya tree"
-    authors:
-      - family-names: Seok
-        given-names: Junhee
-      - family-names: Tian
-        given-names: Lu
-      - family-names: Wong
-        given-names: Wing H.
-    journal: Biostatistics
-    year: 2014
-    volume: "15"
-    issue: "1"
-    start: "182"
-    end: "195"
-    doi: 10.1093/biostatistics/kxt025

@@ -10,11 +10,23 @@ SurvPT is a source R package containing C++17 code. It requires `Rcpp` (at least
 - **macOS:** install the compiler tools required by your R distribution; consult [R for macOS tools](https://mac.r-project.org/tools/).
 - **Linux:** install R development headers, `make`, and a C++17 compiler through your distribution. BLAS, LAPACK, and the Fortran runtime must be available to R's linker.
 
-The package uses R's BLAS/LAPACK and OpenMP make variables. Its current makefiles also add debug compilation flags. Compiler performance and compatibility can therefore differ across platforms; see [development notes](development.md).
+The package uses R's BLAS/LAPACK and OpenMP make variables. Its current makefiles also add debug compilation flags. Compiler performance and compatibility can therefore differ across platforms; see [package-check notes](limitations.md#package-check-notes).
 
-## Install an authorized source archive
+## Install from GitHub
 
-Download the source archive supplied by the maintainer. In R, set the working directory to its location or supply an absolute path:
+Install the package directly from the repository:
+
+```r
+install.packages(c("remotes", "Rcpp", "RcppArmadillo"))
+remotes::install_github("HG-KaiBai/SurvPT", upgrade = "never")
+library(SurvPT)
+```
+
+For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`. SurvPT is distributed under the [MIT license](../LICENSE.md).
+
+## Install a local source archive
+
+If you have a source archive such as `SurvPT_0.2.0.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
@@ -27,7 +39,7 @@ packageVersion("SurvPT")
 
 ## Install from a checkout
 
-After the maintainer grants repository access, authenticate with your normal Git credential manager or SSH configuration, then clone:
+Clone the repository, then install from its root directory:
 
 ```sh
 git clone https://github.com/HG-KaiBai/SurvPT.git
@@ -36,17 +48,6 @@ R CMD INSTALL --preclean .
 ```
 
 Run the dependency-installation command above first. A GitHub ZIP download is a checkout snapshot, not an R source-package archive: extract it and run `R CMD INSTALL` on the directory containing `DESCRIPTION`.
-
-## Optional installation with remotes
-
-The [`remotes` documentation](https://remotes.r-lib.org/reference/install_github.html) describes private-repository authentication via `GITHUB_PAT`. Configure a credential with access to this repository outside your script; do not paste tokens into tracked files, notebooks, or issue reports.
-
-```r
-install.packages("remotes")
-remotes::install_github("HG-KaiBai/SurvPT", upgrade = "never")
-```
-
-For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`. The command does not make the repository public. A 404 may mean that your account or token lacks access; it is not a reason to change repository visibility.
 
 ## Confirm the installation
 
@@ -60,6 +61,6 @@ citation("SurvPT")
 
 Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Examples/quickstart.R`. It needs only the installed package and standard R packages and prints a compact validation summary.
 
-## Updating an existing installation
+## Reproducibility
 
 Version 0.2.0 changes censored-data allocations for exponential and Weibull PT bases and for the uniform infinite terminal interval. Refit analyses made with 0.1.0 instead of assuming identical estimates. Record `packageVersion("SurvPT")`, `sessionInfo()`, the chosen support, base parameters, stopping controls, and source commit or archive checksum.

@@ -1,23 +1,21 @@
-#' Survival estimation with finite and optional Polya trees
+#' Survival estimation with finite Polya trees
 #'
 #' SurvPT provides univariate finite Polya tree estimation for censored event
-#' times, an optional Polya tree interface for right-censored observations,
-#' parametric likelihood helpers, and simulation generators.
+#' times, with uniform, exponential, or Weibull conditional base distributions.
+#' Parametric likelihood helpers and simulation generators support fitting
+#' and evaluating the estimator.
 #'
-#' Start with \code{\link{survPT}()} for endpoint data or \code{\link{survOPT}()} for observed times
-#' and event indicators. See their help pages for support and tail conventions.
-#' The optional Polya tree interface is univariate; the cited article has a
-#' broader multivariate scope. Use `citation("SurvPT")` for references.
+#' Start with \code{\link{survPT}()} and encode observations as left and right
+#' interval endpoints. Exact events, interval censoring, right censoring,
+#' and current status share this interface. See its help page for base
+#' parameters, support, tail conventions, and returned survival and density
+#' estimates. Use `citation("SurvPT")` for the software reference.
 #'
-#' This is a private research package. No software license has been selected;
-#' obtain the maintainer's permission for use and redistribution. The package
-#' provides point estimates, not posterior samples or uncertainty intervals.
+#' SurvPT is distributed under the MIT license. The package provides point
+#' estimates, not posterior samples or uncertainty intervals.
 #'
-#' @references
-#' Seok, J., Tian, L., and Wong, W. H. (2014).
-#' Density estimation on multivariate censored data with optional Polya tree.
-#' \emph{Biostatistics}, 15(1), 182--195.
-#' \doi{10.1093/biostatistics/kxt025}.
+#' @seealso \code{\link{survPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()},
+#'   \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{data_cs}()}
 #' @name SurvPT-package
 #' @aliases NULL SurvPT-package
 #' @useDynLib SurvPT, .registration = TRUE

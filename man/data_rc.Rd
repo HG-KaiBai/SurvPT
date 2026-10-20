@@ -40,5 +40,5 @@ head(d)
 mean(d$status == 0)
 }
 \seealso{
-\code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}, \code{\link{survOPT}()}
+\code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 }

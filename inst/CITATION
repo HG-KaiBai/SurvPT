@@ -1,23 +1,10 @@
-citHeader("Cite the software version used. For OPT analyses, also cite Seok, Tian, and Wong (2014).")
+citHeader("Cite the version of SurvPT used in your analysis.")
 
 bibentry(
   bibtype = "Manual",
   title = "SurvPT: Survival Estimation with Finite Polya Trees",
-  author = person("Yixing", "Zhao"),
+  author = c(person("Yixing", "Zhao"), person("Liqun", "Diao")),
   year = "2026",
-  note = "R package version 0.2.0. Private research repository; permission required for use and redistribution.",
+  note = "R package version 0.2.0.",
   url = "https://github.com/HG-KaiBai/SurvPT"
-)
-
-bibentry(
-  bibtype = "Article",
-  title = "Density estimation on multivariate censored data with optional Pólya tree",
-  author = c(person("Junhee", "Seok"), person("Lu", "Tian"), person("Wing H.", "Wong")),
-  journal = "Biostatistics",
-  year = "2014",
-  volume = "15",
-  number = "1",
-  pages = "182--195",
-  doi = "10.1093/biostatistics/kxt025",
-  url = "https://doi.org/10.1093/biostatistics/kxt025"
 )

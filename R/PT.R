@@ -68,7 +68,7 @@
 #'   }
 #'   The wrapper does not return `Alpha`, posterior samples, or convergence
 #'   diagnostics.
-#' @seealso \code{\link{survOPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
+#' @seealso \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
 #'   \code{\link{SurvPT}()} for the low-level interface.
 #' @export
 #'

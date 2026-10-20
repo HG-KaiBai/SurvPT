@@ -35,7 +35,7 @@ in \code{\link{data_rc}()}. The returned \code{status} column is currently overw
 \code{as.numeric(L == R)}: it is not the event-by-inspection indicator. For
 positive inspection times, recover that indicator with
 \code{as.integer(L == 0 & is.finite(R))}. Current-status data must be fitted via
-interval endpoints in \code{\link{survPT}()}, not as right-censored data in \code{\link{survOPT}()}.
+interval endpoints in \code{\link{survPT}()}.
 }
 \examples{
 d <- data_cs(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)

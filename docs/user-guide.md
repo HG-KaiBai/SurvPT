@@ -25,8 +25,6 @@ stopifnot(all(is.finite(x$L)), all(x$L >= 0),
           !anyNA(x), all(x$R >= x$L))
 ```
 
-`survOPT()` accepts a vector `X` of finite observed follow-up times and an equally long `delta` vector, with `1` for an exact event and `0` for right censoring. Do not pass an interval matrix or current-status indicator to this interface.
-
 ## Choose the PT base distribution
 
 | `prior` | `prior_params` | Base survival function |
@@ -55,7 +53,7 @@ These plug-in parameters are held fixed by the tree fit. Their estimation uncert
 
 ## Choose support and evaluation points
 
-The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `1.1 * max(finite observed endpoints)`. Exponential and Weibull PT outputs retain infinite tails. See [Methods](methods.md) for OPT's different infinite-tail behavior.
+The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `1.1 * max(finite observed endpoints)`. Exponential and Weibull PT outputs retain infinite tails. See [Methods](methods.md) for the conditional distributions within terminal intervals.
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 
@@ -65,7 +63,7 @@ Supply `test_seq` explicitly for reproducible comparisons. The PT default grid u
 
 - `max_M` is the maximum depth, with the root at level zero. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory or exceed integer-shift limits.
 - A node also stops splitting when its **initial allocated count is below one**. The partition is fixed during subsequent updates.
-- PT `max_EM_iter` and `EM_tol` control allocation iterations; OPT uses `max_iter` and `iter_tol`.
+- `max_EM_iter` and `EM_tol` control allocation iterations.
 - The stopping criterion is the Euclidean norm of the change in terminal masses. It is not a likelihood or parameter-distance criterion.
 - `verbose = TRUE` prints progress. The returned list contains no convergence flag, iteration count, or objective history.
 - PT `allocated = 0` selects the legacy overlap-count initialization and skips EM. It is a different estimator, not a speed setting for the default fit.
@@ -77,12 +75,11 @@ Supply `test_seq` explicitly for reproducible comparisons. The PT default grid u
 | `Left`, `Right` | Node interval boundaries; the last right boundary may still be `Inf` even when uniform PT uses a finite effective cutoff |
 | `Level` | Depth of each node; root is zero |
 | `Allocations` | Fractional counts assigned to nodes at the returned iteration |
-| `Posterior_Probs` | Estimated node masses; for PT, internal and terminal nodes are populated; for OPT, only terminal nodes are populated |
+| `Posterior_Probs` | Estimated node masses for both internal and terminal nodes |
 | `Terminal_Nodes` | **One-based R indices** of terminal nodes |
 | `Test_seq` | Evaluation points supplied to the fit |
 | `Survival_Probs` | Estimated `P(T > t)` at those points |
 | `Density` | Estimated density at those points |
-| `Rho` | OPT only: node stopping probabilities; storage can include unused trailing entries, so use the first `length(Left)` entries |
 
 The user-facing PT wrapper does not return `Alpha`. Numeric arrays from RcppArmadillo may have one column; `as.numeric()` removes those dimensions. Sum only terminal masses when checking total probability:
 
@@ -98,16 +95,6 @@ head(summary_table)
 ```
 
 The field name `Posterior_Probs` does not imply posterior simulation or uncertainty intervals. PT currently uses a clipped, mode-style branch-mass update; [Methods](methods.md) describes the formula.
-
-## Right-censored OPT example
-
-```r
-opt <- survOPT(d$L, d$status, test_seq = grid,
-               max_M = 6, max_iter = 100, verbose = FALSE)
-sum(opt$Posterior_Probs[opt$Terminal_Nodes])
-```
-
-Here `d` comes from `data_rc()`, whose `status` is an event indicator. Cite Seok, Tian, and Wong (2014), [doi:10.1093/biostatistics/kxt025](https://doi.org/10.1093/biostatistics/kxt025), when using OPT. The interface is univariate and right-censored; the cited paper has a broader multivariate scope.
 
 ## Simulation helpers
 

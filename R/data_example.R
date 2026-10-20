@@ -17,7 +17,7 @@
 #' @return A data frame with `n` rows and columns `L` (observed follow-up time),
 #'   `R` (equal to `L` for an exact event and `Inf` for right censoring), and
 #'   `status` (`1` for an exact event, `0` for right censoring).
-#' @seealso \code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}, \code{\link{survOPT}()}
+#' @seealso \code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 #' @export
 #'
 #' @examples
@@ -106,7 +106,7 @@ data_ic <- function(seed, n, K, Lambda, q = 0.3){
 #'   `as.numeric(L == R)`: it is not the event-by-inspection indicator. For
 #'   positive inspection times, recover that indicator with
 #'   `as.integer(L == 0 & is.finite(R))`. Current-status data must be fitted via
-#'   interval endpoints in \code{\link{survPT}()}, not as right-censored data in \code{\link{survOPT}()}.
+#'   interval endpoints in \code{\link{survPT}()}.
 #' @return A data frame with columns, in order, `L`, `R`, `time`, and `status`.
 #'   If the event precedes inspection, the interval is `(0, time]`; otherwise
 #'   it is `(time, Inf)`. See Details for the legacy `status` behavior.

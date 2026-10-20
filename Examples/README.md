@@ -1,12 +1,12 @@
-# Example and research-script inventory
+# Examples and research scripts
 
-Start with [`quickstart.R`](quickstart.R). It uses synthetic data, runs all three PT bases and the univariate right-censored OPT interface, checks basic probability properties, and does not write files. OPT methodology: Seok, Tian, and Wong (2014), [doi:10.1093/biostatistics/kxt025](https://doi.org/10.1093/biostatistics/kxt025).
+Start with [`quickstart.R`](quickstart.R). It uses synthetic data, fits `survPT()` with uniform, exponential, and Weibull bases, checks basic probability properties, and does not write files.
 
-The other files are **historical research scripts**, not installation tests or turnkey reproductions of published results. Read them before sourcing: some execute their experiments immediately, use local interactive state, or write results into the working directory. Their statistical calculations have not been revalidated by this documentation update.
+The research scripts below support simulation and data-analysis work. Some execute experiments when sourced, use local interactive state, or write results into the working directory. Review their settings and dependencies before running them.
 
 | File | Purpose | Requirements and execution notes |
 | --- | --- | --- |
-| `test_function.R` | Interactive PT/OPT comparison and plotting | `devtools`, `interval`; calls `View()` and refers to `fid` although its construction is commented out |
+| `test_function.R` | Historical estimator comparison and plotting | `devtools`, `interval`; calls `View()` and refers to `fid` although its construction is commented out |
 | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
 | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
 | `bootstrap.R` | Helpers used by bootstrap comparisons | Assumes SurvPT, `interval`, and `boot` functions are attached; helper is tailored to three evaluation times and three estimators |
@@ -20,6 +20,17 @@ The other files are **historical research scripts**, not installation tests or t
 Use the repository root as the working directory because helper paths are relative to it. Install optional packages only for the comparison being studied. Reduce replication and bootstrap counts for a pilot run. Replace the fixed worker count with a setting appropriate to your system; Windows does not support the forked multiworker `mclapply()` workflow used in the historical simulations.
 
 Use a dedicated output directory and set seeds explicitly. Resolve the documented interface mismatches before interpreting a script's results. The package's [regression tests](../tests/pt-conditional-base.R) and [quickstart](quickstart.R) are the current validation entry points.
+
+## Validation
+
+After installing SurvPT, run these commands from the repository root:
+
+```sh
+Rscript Examples/quickstart.R
+Rscript tests/pt-conditional-base.R
+```
+
+The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three root-only trees, and three exact-data configurations. They do not run the full simulation studies.
 
 ## Attribution
 

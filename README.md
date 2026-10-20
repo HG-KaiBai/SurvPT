@@ -1,31 +1,34 @@
 # SurvPT
 
-SurvPT is an R package for estimating a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.0**.
+[![Install from GitHub](https://img.shields.io/badge/Install-GitHub-181717?logo=github&logoColor=white)](#install-from-github)
 
-This is a **private research repository**. Downloads and GitHub installation require access from the maintainer. No software license has been selected; obtain the maintainer's permission before using or redistributing the code. See [LICENSE](LICENSE). These documents do not change the repository's visibility or grant access.
+SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.0**.
 
-## Choose an estimator
+The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) under the [MIT license](LICENSE.md).
+
+## Fit with SurvPT
 
 | Function | Input | Model and scope |
 | --- | --- | --- |
 | `survPT()` | Numeric left and right interval endpoints | Finite Polya tree with uniform, exponential, or Weibull conditional base distributions; supports exact, interval-censored, right-censored, and current-status observations |
-| `survOPT()` | One observed time and one event indicator per subject | Optional Polya tree for **univariate right-censored data**, with uniform finite terminal intervals |
 | `estimate()`, `estimate_exp()` | Left and right endpoints | Parametric Weibull and exponential maximum-likelihood estimates, useful for choosing PT base parameters |
 
-Neither tree interface accepts covariates or returns posterior draws, confidence intervals, or a multivariate fitted distribution. Read the [method and tail definitions](docs/methods.md) before interpreting extrapolation.
+Start with `survPT()` and encode each observation as a pair of interval endpoints. Choose a uniform, exponential, or Weibull base distribution, fit the tree, and evaluate the survival function on a time grid. The estimator returns point estimates; it does not accept covariates or return posterior draws, confidence intervals, or a multivariate fitted distribution. Read the [method and tail definitions](docs/methods.md) before interpreting extrapolation.
 
-## Install
+## Install from GitHub
 
-Install R, a compatible C++17 compilation toolchain, and the package dependencies. On Windows, use the [Rtools version matching your R installation](https://cran.r-project.org/bin/windows/Rtools/). Installation has been tested with R 4.5.1 on Windows x64.
+Run the following commands in R to install SurvPT directly from GitHub using [`remotes::install_github()`](https://remotes.r-lib.org/reference/install_github.html):
 
 ```r
-install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.2.0.tar.gz", repos = NULL, type = "source")
+install.packages(c("remotes", "Rcpp", "RcppArmadillo"))
+remotes::install_github("HG-KaiBai/SurvPT", upgrade = "never")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
 
-Run this after obtaining the archive through an authorized channel, from the directory containing the archive. For installation from a private GitHub checkout, authentication, and platform notes, see [Installation](docs/installation.md). Source archives are build artifacts and may not be tracked by Git.
+Installation compiles the package from source and requires a C++17 toolchain. On Windows, install the [Rtools version matching your R installation](https://cran.r-project.org/bin/windows/Rtools/). Installation has been tested with R 4.5.1 on Windows x64.
+
+For installation from a local source archive or checkout, reproducible version selection, and platform notes, see [Installation](docs/installation.md). Source archives are build artifacts and may not be tracked by Git.
 
 ## First fit
 
@@ -52,29 +55,24 @@ sum(fit$Posterior_Probs[fit$Terminal_Nodes])  # approximately 1
 
 `prior_params = 0.5` is an exponential **rate**, not a mean. `survPT()` reads the first two columns of `X` as interval endpoints; it does not read a status column. Use `as.numeric()` when a returned Armadillo vector appears as a one-column matrix.
 
-A complete runnable example, including all three PT bases and OPT, is in [Examples/quickstart.R](Examples/quickstart.R). The other historical scripts have additional dependencies and may launch large simulations; consult [Examples/README.md](Examples/README.md) before running them.
+A runnable example covering all three PT bases is in [Examples/quickstart.R](Examples/quickstart.R). Simulation and data-analysis scripts, their dependencies, and validation commands are described in [Examples/README.md](Examples/README.md).
 
 ## Documentation
 
-- [Installation and private GitHub access](docs/installation.md)
+- [Installation from GitHub or source](docs/installation.md)
 - [Data encoding, fitting, and interpreting output](docs/user-guide.md)
-- [PT and OPT implementation details](docs/methods.md)
+- [Finite Polya tree implementation details](docs/methods.md)
 - [Known limitations and troubleshooting](docs/limitations.md)
-- [Development, checks, and source-package builds](docs/development.md)
 - [Citations and BibTeX](docs/citations.md)
-- [Contribution workflow](CONTRIBUTING.md)
-- [Changes in version 0.2.0](NEWS)
 
-Installed help is available with `help(package = "SurvPT")`, `?survPT`, `?survOPT`, and `?SurvPT` (the low-level native interface).
+Installed help is available with `help(package = "SurvPT")`, `?survPT`, and `?SurvPT` (the low-level native interface).
 
-## Cite the OPT methodology
+## Cite SurvPT
 
-When using or discussing the OPT implementation, cite:
+Until the manuscript citation is available, use `citation("SurvPT")` for the software reference. Record the package version and Git commit or source-archive checksum used in your analysis. See [Citations and BibTeX](docs/citations.md) for citation metadata and attribution for the comparison routines.
 
-Seok, J., Tian, L., and Wong, W. H. (2014). **Density estimation on multivariate censored data with optional Pólya tree.** *Biostatistics*, 15(1), 182–195. [doi:10.1093/biostatistics/kxt025](https://doi.org/10.1093/biostatistics/kxt025).
+## Authors and contact
 
-The article studies a multivariate method. This repository exposes a univariate right-censoring implementation related to that methodology; it is not a claim of a complete reproduction of the article. Use `citation("SurvPT")` for the software and OPT references, and record your package version and Git commit.
+Authors: Yixing Zhao and Liqun Diao. Developer and maintainer: Yixing Zhao.
 
-## Support
-
-Authorized collaborators can report a reproducible example in the repository's private issue tracker. For access, permission, or an issue that cannot be posted there, contact Yixing Zhao at the maintainer address in [DESCRIPTION](DESCRIPTION). Include `sessionInfo()`, the function call, and synthetic data that reproduce the problem.
+For questions about the package, contact Yixing Zhao at the email address in [DESCRIPTION](DESCRIPTION).
