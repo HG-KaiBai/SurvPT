@@ -1,3 +1,6 @@
+# Historical nested bootstrap study: executes experiment loops when sourced.
+# See Examples/README.md for dependencies, output paths, and platform limits.
+# These are bootstrap survival intervals, not native PT posterior intervals.
 devtools::load_all()
 library(interval)
 library(parallel)

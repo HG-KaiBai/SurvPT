@@ -452,29 +452,11 @@ double PT::update_individual_allocation(double left_obs, double right_obs, doubl
         double node_left = left_bound(node);
         double node_right = right_bound(node);
 
-        // Compute overlap between [joint_left, joint_right] and [node_left, node_right]
-        double overlap_left = std::max(joint_left, node_left);
-        double overlap_right = std::min(joint_right, node_right);
-
-        if (overlap_left < overlap_right) {
-            if (arma::is_finite(overlap_right)) {
-              p_joint += (overlap_right - overlap_left) / (node_right - node_left) * posterior_probs(node);
-            } else {
-              p_joint += posterior_probs(node);
-            }
-        }
-
-        // Compute overlap between [left_obs, right_obs] and [node_left, node_right]
-        double obs_overlap_left = std::max(left_obs, node_left);
-        double obs_overlap_right = std::min(right_obs, node_right);
-
-        if (obs_overlap_left < obs_overlap_right) {
-            if (arma::is_finite(obs_overlap_right)) {
-              p_data += (obs_overlap_right - obs_overlap_left) / (node_right - node_left) * posterior_probs(node);
-            } else {
-              p_data += posterior_probs(node);
-            }
-        }
+        // Integrate the same conditional base distribution used by output().
+        p_joint += posterior_probs(node) *
+            terminal_probability(joint_left, joint_right, node_left, node_right);
+        p_data += posterior_probs(node) *
+            terminal_probability(left_obs, right_obs, node_left, node_right);
     }
 
     // Avoid division by zero
@@ -514,85 +496,68 @@ void PT::update_tree_size() {
 }
 
 
+double PT::terminal_right_bound(double right) const {
+    if (prior == 1 && !arma::is_finite(right)) {
+        return arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
+    }
+    return right;
+}
+
+double PT::base_survival(double x) const {
+    if (prior == 2) {
+        return exp(-prior_params(0) * x);
+    } else if (prior == 3) {
+        return exp(-pow(prior_params(0) * x, prior_params(1)));
+    }
+    Rcpp::stop("Invalid prior type.");
+    return 0.0;
+}
+
+double PT::base_density(double x) const {
+    const double lambda = prior_params(0);
+    if (prior == 2) {
+        return lambda * exp(-lambda * x);
+    } else if (prior == 3) {
+        const double k = prior_params(1);
+        return k * lambda * pow(lambda * x, k - 1.0) * exp(-pow(lambda * x, k));
+    }
+    Rcpp::stop("Invalid prior type.");
+    return 0.0;
+}
+
+double PT::terminal_probability(double left, double right, double a, double b) const {
+    b = terminal_right_bound(b);
+    const double lo = max(left, a);
+    const double hi = min(right, b);
+    if (lo >= hi) {
+        return 0.0;
+    }
+
+    // P(left < T < right | a < T < b) under the selected base distribution.
+    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
+    const double numerator = prior == 1 ? hi - lo : base_survival(lo) - base_survival(hi);
+    if (denom > SMALL_VALUE) {
+        return min(max(numerator / denom, 0.0), 1.0);
+    }
+    return 0.0;
+}
+
+double PT::terminal_density(double t, double a, double b) const {
+    b = terminal_right_bound(b);
+    if (t < a || t >= b) {
+        return 0.0;
+    }
+    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
+    if (denom > SMALL_VALUE) {
+        return prior == 1 ? 1.0 / denom : base_density(t) / denom;
+    }
+    return 0.0;
+}
+
 List PT::output() {
     // compute survival probabilities and densities at test_seq by mixing over terminal nodes
     survival_probs = vec(test_seq.n_elem, fill::zeros);
     vec density_probs(test_seq.n_elem, fill::zeros);
-
-    auto base_survival = [&](double x) -> double {
-        if (prior == 2) {
-            const double lambda = prior_params(0);
-            return exp(-lambda * x);
-        } else if (prior == 3) {
-            const double lambda = prior_params(0);
-            const double k = prior_params(1);
-            return exp(-pow(lambda * x, k));
-        }
-        Rcpp::stop("Invalid prior type.");
-        return 0.0;
-    };
-
-    auto base_density = [&](double x) -> double {
-        if (prior == 2) {
-            const double lambda = prior_params(0);
-            return lambda * exp(-lambda * x);
-        } else if (prior == 3) {
-            const double lambda = prior_params(0);
-            const double k = prior_params(1);
-            return k * lambda * pow(lambda * x, k - 1.0) * exp(-pow(lambda * x, k));
-        }
-        Rcpp::stop("Invalid prior type.");
-        return 0.0;
-    };
-
-    auto terminal_survival = [&](double t, double a, double b) -> double {
-        if (prior == 1) {
-            double right = b;
-            if (!arma::is_finite(right)) {
-                right = arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
-            }
-            const double width = right - a;
-            if (width > SMALL_VALUE && t < right) {
-                return min(max((right - t) / width, 0.0), 1.0);
-            }
-            return 0.0;
-        }
-
-        const double survival_a = base_survival(a);
-        const double survival_t = base_survival(t);
-        const double survival_b = arma::is_finite(b) ? base_survival(b) : 0.0;
-        const double denom = survival_a - survival_b;
-        if (denom > SMALL_VALUE) {
-            return min(max((survival_t - survival_b) / denom, 0.0), 1.0);
-        }
-        return 0.0;
-    };
-
-    auto terminal_density = [&](double t, double a, double b) -> double {
-        if (prior == 1) {
-            double right = b;
-            if (!arma::is_finite(right)) {
-                right = arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
-            }
-            const double width = right - a;
-            if (width > SMALL_VALUE && t >= a && t < right) {
-                return 1.0 / width;
-            }
-            return 0.0;
-        }
-
-        if (t < a || (arma::is_finite(b) && t >= b)) {
-            return 0.0;
-        }
-
-        const double survival_a = base_survival(a);
-        const double survival_b = arma::is_finite(b) ? base_survival(b) : 0.0;
-        const double denom = survival_a - survival_b;
-        if (denom > SMALL_VALUE) {
-            return base_density(t) / denom;
-        }
-        return 0.0;
-    };
 
     for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
         const double t = test_seq(i);
@@ -607,13 +572,7 @@ List PT::output() {
 
             d += w * terminal_density(t, a, b);
 
-            if (t < a) {
-                s += w;
-            } else if (t >= b) {
-                // contributes 0
-            } else {
-                s += w * terminal_survival(t, a, b);
-            }
+            s += w * terminal_probability(t, arma::datum::inf, a, b);
         }
 
         // clamp numeric noise

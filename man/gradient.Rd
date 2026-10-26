@@ -2,20 +2,28 @@
 % Please edit documentation in R/MLE_estimate.R
 \name{gradient}
 \alias{gradient}
-\title{gradient of loglikelihood function for Weibull distribution}
+\title{Gradient of the Weibull negative log-likelihood}
 \usage{
 gradient(theta, LB, RB)
 }
 \arguments{
-\item{theta}{parameter vector (rate, shape)}
+\item{theta}{Positive parameter vector \code{c(lambda, k)}, with inverse scale
+\code{lambda} and shape \code{k}. Weibull survival is \code{exp(-(lambda * t)^k)}.}
 
-\item{LB}{left bound of data}
+\item{LB}{Numeric vector of finite nonnegative left endpoints.}
 
-\item{RB}{right bound of data}
+\item{RB}{Numeric vector of right endpoints, the same length as \code{LB}.
+Use \code{RB == LB} for exact events and \code{Inf} for right censoring. Exact event
+times should be positive. Missing values are not supported.}
 }
 \value{
-gradient vector
+A length-two gradient in the order \code{c(lambda, k)} for the negative
+log-likelihood, not the positive log-likelihood.
 }
 \description{
-gradient of loglikelihood function for Weibull distribution
+Internal analytic gradient used by \code{\link{estimate}()}.
 }
+\seealso{
+\code{\link{loglike}()}, \code{\link{estimate}()}
+}
+\keyword{internal}

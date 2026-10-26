@@ -1,3 +1,7 @@
+# Historical analysis with embedded data and file-writing side effects.
+# Both treatment groups are defined below; the later assignment replaces the
+# earlier data object. Review group selection and permissions before execution.
+# See Examples/README.md for dependencies and the fiducial reference.
 devtools::load_all()
 library(interval)
 library(parallel)
@@ -5,7 +9,7 @@ library(ggplot2)
 source('./Examples/Fiducial.R')
 source('./Examples/LinInterpolation.R')
 
-# Heavily treatment
+# Heavily treated group
 L = c(15, 15, 10, 12, 9, 15, 5, 1, 15, 1, 9, 11, 12, 7, 11, 10, 12, 10, 1, 5, 10, 8,
            16, 16, 16, 1, 14, 14, 15, 15, 14, 9, 14, 14, 10, 13, 1, 11, 12, 9, 14, 3, 9, 13, 9,
            17, 17, 17, 12, 13, 1, 1, 14, 10, 10, 3, 15, 1, 10, 9, 11, 7, 13, 7, 10, 1, 1, 10,
@@ -19,7 +23,7 @@ R = c(Inf, Inf, 11, 14, 12, 16, 7, 14, 16, 13, 10, 13, 13, 10, 13, 11, 13, 11, 7
       16, 15, 12, 7, 13, 10, 15, 15, 14, 11, 12, 16, 15, 14, 14, 12, 8, 12)
 data <- data.frame(L = L, R = R)
 
-# Lightly treatment
+# Lightly treated group
 L = c(1, 10, 10, 8, 1, 1, 1, 12, 1, 6, 12, 1, 11, 11, 1, 1, 1, 15, 11, 1, 7,
       rep(15, 19), 12, 1, 1, 9, 1, 13, 9, 14, 13, 1, 13, 13, 13, 12, 12, 1, 13, 1, 12,
       rep(16, 31), 1, 15, 13, 8, 11, 9, 13, 1, 15, 12, 8, 3, 12, 1, 9, 12, 13, 11, 6,

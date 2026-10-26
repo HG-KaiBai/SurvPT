@@ -1,3 +1,6 @@
+# Historical large simulation; do not treat this as a turnkey example.
+# Executes loops and writes files. Its fiducial() calls need adaptation to the
+# current list return value. See Examples/README.md for dependencies and limits.
 library(SurvPT)
 library(interval)
 library(parallel)

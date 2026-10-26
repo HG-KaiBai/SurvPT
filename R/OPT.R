@@ -1,23 +1,7 @@
-#' Fit the Polya tree for Interval censored Data
-#'
-#' @param X vector of observed data
-#' @param support Support type, "Finite" or "Infinite"
-#' @param max_M Maximum level of the Polya tree
-#' @param verbose Logical, whether to print progress messages
-#' @param test_seq Sequence of test points for survival probability estimation (optional)
-#' @param delta censoring indicator (1: event time, 0: right censored)
-#' @param Rho prior stop probability
-#' @param max_iter max number of iteration
-#' @param iter_tol tolerance of iteration
-#'
-#' @returns A list with the following components: Left (left interval), Right (right interval), Alpha (prior parameters), Allocations (number of observations allocated to each partition), Posterior_Probs (posterior probabilities for each partition)
 #' @export
-#'
-#' @examples
-#' data <- data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-#' out <- survPT(X = data)
+#' @noRd
 survOPT <- function(X, delta, test_seq = NULL, Rho = 0.5, support = c(0, Inf), max_M = 8, max_iter = 100, iter_tol = 1e-6, verbose = TRUE) {
-    # The first column and second column of X are the observed left bound and right bound, respectively.
+    # One observed follow-up time and one event indicator per subject.
     X = as.numeric(X)
     delta = as.numeric(delta)
     if (!is.numeric(X) || length(X) < 1) {

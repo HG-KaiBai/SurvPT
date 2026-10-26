@@ -43,6 +43,11 @@ public:
     List output(); // output results
 
 private:
+    double terminal_right_bound(double right) const;
+    double base_survival(double x) const;
+    double base_density(double x) const;
+    double terminal_probability(double left, double right, double a, double b) const;
+    double terminal_density(double t, double a, double b) const;
     int nodes_used; // current idx of the last used node
     vec left_bound;
     vec right_bound; // left and right bounds of each node

@@ -2,28 +2,46 @@
 % Please edit documentation in R/data_example.R
 \name{data_cs}
 \alias{data_cs}
-\title{Create the Current Status Test Data from Weibull Distribution}
+\title{Simulate current-status observations of Weibull event times}
 \usage{
 data_cs(seed, n, K, Lambda, q = 0.3)
 }
 \arguments{
-\item{seed}{Random seed}
+\item{seed}{Integer random seed passed to \code{set.seed()}. The generator resets
+the global R random-number state.}
 
-\item{n}{Sample size}
+\item{n}{Positive integer sample size.}
 
-\item{K}{Weibull shape parameter}
+\item{K}{Positive Weibull shape parameter.}
 
-\item{Lambda}{Weibull rate parameter}
+\item{Lambda}{Positive Weibull inverse-scale parameter. This is a rate only
+when \code{K = 1}; use \code{scale = 1 / Lambda} with \code{\link[stats:Weibull]{stats::rweibull()}}.}
 
-\item{q}{Right Censoring rate}
+\item{q}{Target probability that the censoring or inspection time precedes
+the event, with \verb{0 < q < 1}. This determines the time distribution, not an
+exact realized sample proportion.}
 }
 \value{
-A data frame with four columns: time (observation time), status (1 if event observed, 0 if censored), L (left interval), and R (right interval)
+A data frame with columns, in order, \code{L}, \code{R}, \code{time}, and \code{status}.
+If the event precedes inspection, the interval is \verb{(0, time]}; otherwise
+it is \verb{(time, Inf)}. See Details for the legacy \code{status} behavior.
 }
 \description{
-Create the Current Status Test Data from Weibull Distribution
+Observe only whether an event has occurred by an independent inspection time.
+}
+\details{
+Event and inspection times use the Weibull distributions described
+in \code{\link{data_rc}()}. The returned \code{status} column is currently overwritten with
+\code{as.numeric(L == R)}: it is not the event-by-inspection indicator. For
+positive inspection times, recover that indicator with
+\code{as.integer(L == 0 & is.finite(R))}. Current-status data must be fitted via
+interval endpoints in \code{\link{survPT}()}.
 }
 \examples{
-data_cs(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
-data_cs(seed = 123, n = 100, K = 2, Lambda = 0.1, q = 0.3)
+d <- data_cs(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
+observed_by_inspection <- as.integer(d$L == 0 & is.finite(d$R))
+head(data.frame(d[, c("L", "R", "time")], observed_by_inspection))
+}
+\seealso{
+\code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{survPT}()}
 }

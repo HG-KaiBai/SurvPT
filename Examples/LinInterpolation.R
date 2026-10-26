@@ -1,4 +1,6 @@
-# This code corresponds to Lines 21-25 in Algorithm 1 (Linear interpolations via quadratic programming)
+# Experimental quadratic-programming interpolation helper for Fiducial.R.
+# Related to lines 21-25 of Algorithm 1 in Cui, Hannig, and Kosorok (2024),
+# doi:10.1080/01621459.2023.2252143. Requires pracma; see Examples/README.md.
 library('pracma')
 
 linear_interpolation = function(grid, fid, lambda = 1) {
