@@ -21,7 +21,7 @@
 #'
 #' @details
 #' With infinite upper support, `tau` is the largest finite observed endpoint.
-#' A new root separates the finite subtree from an unresolved `[tau, Inf)`
+#' A new root separates the finite subtree from a `[tau, Inf)`
 #' tail. Its left probability has the internal first-level prior
 #' `q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
 #' Initial censored allocations use the Beta prior mean `0.5` and the
@@ -40,9 +40,14 @@
 #' `p_tail`. Exact events at split points, including `tau`, use the interval
 #' on the left. The first-layer probability is updated along with the tree.
 #'
-#' Survival at `tau` equals `p_tail`. Tail shape is unspecified, so survival
-#' and density at finite points greater than `tau` return `NA`; at positive
-#' infinity they return zero. Bounded support adds no tail node. The observed
+#' Survival at `tau` equals `p_tail`. At finite `t > tau`, the uniform base
+#' carries survival forward as `S(tau)` and returns `NA` for density. The
+#' exponential base uses its conditional tail: survival is
+#' `p_tail * exp(-lambda * (t - tau))` and density is `lambda` times survival,
+#' where `lambda = prior_params` remains fixed during fitting. The Weibull
+#' tail shape remains unspecified, so its survival and density return `NA`
+#' beyond `tau`. At positive infinity, survival and density return zero for
+#' all bases. Bounded support adds no tail node. The observed
 #' log-likelihood need not increase under the prior-adjusted mode-style updates.
 #'
 #' @returns A list containing `Left`, `Right`, `Level`, `Allocations`,

@@ -2,11 +2,11 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.3.0, including its partition, allocation updates, and tail conventions.
+This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.3.1, including its partition, allocation updates, and tail conventions.
 
 ## Finite PT partition
 
-With infinite upper support, `survPT()` first splits at `tau`, the largest finite endpoint in the first two columns of `X`, including right-censoring times. The root's left child is the finite PT subtree with mass `theta_0`; its right child is an unresolved `[tau, Inf)` tail with mass `p_tail = 1 - theta_0`. Only the finite subtree is subdivided. For a uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the finite parent interval. A finite upper support retains the bounded tree without an extra root split.
+With infinite upper support, `survPT()` first splits at `tau`, the largest finite endpoint in the first two columns of `X`, including right-censoring times. The root's left child is the finite PT subtree with mass `theta_0`; its right child is a `[tau, Inf)` tail with mass `p_tail = 1 - theta_0`. Only the finite subtree is subdivided. For a uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the finite parent interval. A finite upper support retains the bounded tree without an extra root split.
 
 Splitting ends at `max_M` within the finite subtree or when the initial allocated count is below one. The added root split does not consume this depth budget: with unbounded support, the finite subtree root is reported at level one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
@@ -72,9 +72,20 @@ The fixed partition allows conditional observation probabilities (and exact-even
 
 1. **Tree truncation:** stopping recursive partitioning at a finite depth or low initial count.
 2. **Conditional base truncation:** restricting and renormalizing a base distribution inside one terminal interval.
-3. **Unresolved tail mass:** retaining `p_tail` beyond the largest finite observed endpoint, without specifying a density there.
+3. **Tail mass:** retaining `p_tail` beyond the largest finite observed endpoint. The exponential base supplies a conditional tail distribution; uniform and Weibull tail densities remain unspecified.
 
-There is no longer a factor-1.1 uniform cutoff. For all three bases, `S(tau) = p_tail`, and the finite density integrates to `theta_0`. Tail shape is unidentified: survival and density return `NA` at finite times strictly greater than `tau`, and zero at positive infinity. The tail is included in `Terminal_Nodes`, so all terminal masses sum to one. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
+There is no longer a factor-1.1 uniform cutoff. For all three bases, `S(tau) = p_tail`, and the finite density integrates to `theta_0`. At finite times strictly greater than `tau`, uniform survival is carried forward as `S(tau)`; this is an output convention and does not specify a tail density, which remains `NA`. Weibull survival and density remain `NA` beyond `tau`.
+
+For the exponential base with fixed rate `lambda = prior_params`, the terminal tail uses the base conditioned on `T > tau`:
+
+\[
+S(t)=p_{\mathrm{tail}}\exp\{-\lambda(t-\tau)\},\qquad
+f(t)=p_{\mathrm{tail}}\lambda\exp\{-\lambda(t-\tau)\},\quad t>\tau.
+\]
+
+The exponential tail density integrates to `p_tail`, so the full density integrates to one. Tail computations use the shifted time `t - tau` to avoid dividing by a potentially underflowed `exp(-lambda * tau)`. The rate is not re-estimated during EM; the tail mass is updated with the other node masses. Because every finite observed endpoint is at most `tau`, conditional tail probabilities for right-censored observations are one, preserving the likelihood contributions above. Exact events at `tau` still use the finite interval on the left.
+
+At positive infinity, survival and density return zero for all bases. The tail is included in `Terminal_Nodes`, so all terminal masses sum to one. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
 
 ## Implementation map
 

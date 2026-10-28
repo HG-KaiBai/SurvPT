@@ -9,7 +9,7 @@
 | `survPT()` returns point estimates | No built-in confidence bands or posterior draws; its convergence flag only checks terminal-mass changes |
 | Inputs are univariate with no covariates | No multivariate joint survival or regression interface |
 | No sampling-truncation or delayed-entry arguments | Do not treat the `support` setting as a delayed-entry correction |
-| The tail shape beyond `tau` is unspecified | Only its total mass is estimated; survival and density at finite times beyond `tau` return `NA` |
+| Tail shape beyond `tau` depends on the base | Uniform survival stays at `S(tau)` with density `NA`; exponential predictions use the conditional base with a fixed supplied rate; Weibull survival and density remain `NA` |
 | Partition is fixed after initialization | EM does not revisit early stopping or split locations |
 | Direct exponentials and CDF differences are used | Extreme rates, shapes, or tail locations can lose precision |
 | Input checks are incomplete | Validate missing values, numeric types, interval ordering, support, and iteration controls yourself |
@@ -39,7 +39,7 @@ These limitations are documented to distinguish observed software behavior from 
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 
-**A curve stops at `tau`.** The unresolved tail has mass `p_tail`, but no shape. All three bases return `NA` beyond `tau` at finite times; this does not mean the tail mass is zero.
+**A curve stops or flattens at `tau`.** Uniform survival stays at `S(tau)` beyond `tau`, while its density is `NA`. Exponential survival and density use the conditional exponential tail with the supplied rate. Weibull survival and density remain `NA` beyond `tau`; this does not mean the tail mass is zero.
 
 **A historical simulation fails on Windows.** Scripts using `parallel::mclapply()` with multiple forked workers require adaptation. Start serially with one worker, or implement and validate a socket-cluster workflow.
 

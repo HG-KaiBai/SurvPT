@@ -1,4 +1,4 @@
-# SurvPT 0.3.0: small, reproducible examples using only installed dependencies.
+# SurvPT 0.3.1: small, reproducible examples using only installed dependencies.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)
@@ -32,7 +32,7 @@ checks <- do.call(rbind, lapply(names(fits), function(name) {
 
 print(checks, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
-cat("All bases retain unresolved tail mass beyond tau; tail shape is unspecified.\n")
+cat("Beyond tau: uniform survival stays constant, exponential uses its conditional tail, Weibull returns NA.\n")
 
 # Optional plotting in an interactive R session:
 if (interactive()) {

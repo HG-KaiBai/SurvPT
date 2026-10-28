@@ -1,3 +1,15 @@
+# SurvPT 0.3.1
+
+- Uniform-base survival at finite times beyond tau now stays at S(tau)
+  instead of returning NA. Tail density remains NA.
+- Exponential-base tail survival and density now use the conditional
+  exponential distribution beyond tau with the supplied rate. Tail mass
+  continues to update during EM. Shifted-time calculations avoid dividing
+  by an underflowed base survival probability at tau.
+- Regression tests cover both public interfaces, allocation modes, missing
+  evaluation times, tail boundaries, density integrals and large tau.
+  Weibull tail predictions and bounded-support fits remain unchanged.
+
 # SurvPT 0.3.0
 
 - Unbounded-support PT fits now split first at the largest finite observed

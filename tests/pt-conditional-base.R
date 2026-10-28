@@ -39,7 +39,7 @@ leaf_bounds <- function(fit, j, prior) {
 }
 reference_mass <- function(fit, left, right, prior) {
     sum(vapply(fit$Terminal_Nodes, function(j) {
-        if (!is.na(fit$tau) && j == 3)
+        if (!is.na(fit$tau) && j == 3 && prior != 2)
             return(tail_mass(fit) * as.numeric(is.infinite(right) && left <= fit$tau))
         bounds <- leaf_bounds(fit, j, prior)
         a <- bounds[1]; b <- bounds[2]
@@ -52,9 +52,10 @@ reference_mass <- function(fit, left, right, prior) {
     }, numeric(1)))
 }
 reference_density <- function(fit, t, prior) {
-    if (!is.na(fit$tau) && is.finite(t) && t > fit$tau) return(NA_real_)
+    if (!is.na(fit$tau) && prior != 2 && is.finite(t) && t > fit$tau)
+        return(NA_real_)
     sum(vapply(fit$Terminal_Nodes, function(j) {
-        if (!is.na(fit$tau) && j == 3) return(0)
+        if (!is.na(fit$tau) && j == 3 && prior != 2) return(0)
         bounds <- leaf_bounds(fit, j, prior)
         a <- bounds[1]; b <- bounds[2]
         if (t < a || t > b || (t == a && a > fit$Left[1])) return(0)
@@ -97,7 +98,8 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
 
     for (fit in fits) {
         reference_s <- vapply(points, function(t) {
-            if (!is.na(fit$tau) && is.finite(t) && t > fit$tau) return(NA_real_)
+            if (!is.na(fit$tau) && prior != 2 && is.finite(t) && t > fit$tau)
+                return(if (prior == 1) tail_mass(fit) else NA_real_)
             reference_mass(fit, t, Inf, prior)
         }, numeric(1))
         reference_d <- vapply(points, function(t)
@@ -131,10 +133,22 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
                   bounds[1], bounds[2], rel.tol = 1e-7)$value
     }, numeric(1)))
     assert_close(density_integral, body_mass(final), paste(label, "density integral"), 1e-6)
+    if (!finite && prior == 2) {
+        tail_integral <- integrate(function(t)
+            as.vector(fit_pt(data, prior, support, depth, 20, t)$Density),
+            final$tau, Inf, rel.tol = 1e-7)$value
+        assert_close(tail_integral, tail_mass(final), paste(label, "tail integral"), 1e-6)
+        assert_close(density_integral + tail_integral, 1,
+                     paste(label, "total density integral"), 1e-6)
+    }
 
     if (!finite) {
         s_far <- as.vector(final$Survival_Probs)[match(10, points)]
-        stopifnot(is.na(s_far))
+        if (prior == 1) assert_close(s_far, tail_mass(final), "uniform tail survival")
+        else if (prior == 2)
+            assert_close(s_far, tail_mass(final) * pexp(10 - final$tau, lower.tail = FALSE),
+                         "exponential tail survival")
+        else stopifnot(is.na(s_far))
     }
     if (depth == 6) stopifnot(any(final$Level[final$Terminal_Nodes] < depth))
     cases <- cases + 1L

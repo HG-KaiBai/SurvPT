@@ -77,8 +77,19 @@ for (prior in 1:3) for (depth in c(0, 3)) {
         stopifnot(all(likelihood > 0))
         near(fit$LogLik, sum(log(likelihood)))
         near(as.numeric(fit$Survival_Probs[5]), tail_mass(fit))
-        stopifnot(fit$Density[5] > 0, all(is.na(fit$Survival_Probs[6:7])),
-                  all(is.na(fit$Density[6:7])), fit$Survival_Probs[8] == 0,
+        if (prior == 1) {
+            near(as.numeric(fit$Survival_Probs[6:7]), rep(tail_mass(fit), 2))
+        } else if (prior == 2) {
+            expected_tail <- tail_mass(fit) * pexp(points[6:7] - fit$tau,
+                                                   rate = 0.7, lower.tail = FALSE)
+            near(as.numeric(fit$Survival_Probs[6:7]), expected_tail)
+            near(as.numeric(fit$Density[6:7]), 0.7 * expected_tail)
+        } else {
+            stopifnot(all(is.na(fit$Survival_Probs[6:7])))
+        }
+        if (prior != 2) stopifnot(all(is.na(fit$Density[6:7])))
+        stopifnot(fit$Density[5] > 0,
+                  fit$Survival_Probs[8] == 0,
                   fit$Density[8] == 0)
         near(sum(fit$Posterior_Probs[fit$Terminal_Nodes]), 1)
         near(tail(as.numeric(fit$LogLik_Trace), 1), fit$LogLik)
@@ -93,6 +104,58 @@ for (iterations in c(0, 1, 50)) {
     near(body_mass(fit), 3/4)
     near(as.numeric(fit$Density), rep(1/4, 2))
     near(as.numeric(fit$Survival_Probs), c(3/4, 1/4))
+}
+
+# Uniform tail predictions work without tau in the grid and preserve its order.
+# Check both public interfaces and allocation modes, including missing values.
+tail_points <- c(100, NA_real_, 3.01, NaN, Inf, -Inf, 1, 100)
+for (allocated in 0:1) {
+    fit <- fit_tail(simple, depth = 0, iterations = 3,
+                    points = tail_points, allocated = allocated)
+    native <- SurvPT(simple, tail_points, 1, c(0, Inf), 0L, c(0.12, 1),
+                     allocated, 3L, 1e-10, FALSE)
+    near(as.numeric(fit$Survival_Probs[c(1, 3, 8)]), rep(1/4, 3))
+    near(as.numeric(native$survival_probs[c(1, 3, 8)]), rep(1/4, 3))
+    for (predictions in list(fit$Survival_Probs, native$survival_probs)) {
+        stopifnot(all(is.na(predictions[c(2, 4)])))
+        near(as.numeric(predictions[c(5, 6, 7)]), c(0, 1, 3/4))
+    }
+    stopifnot(all(is.na(fit$Density[c(1, 2, 3, 4, 8)])),
+              all(is.na(native$density_probs[c(1, 2, 3, 4, 8)])))
+}
+
+# Constant extension also handles tail masses at the boundaries zero and one.
+for (data in list(cbind(c(1, 2), c(1, 2)), cbind(c(1, 2), Inf))) {
+    fit <- fit_tail(data, iterations = 10, points = c(2, 2.01, 100))
+    near(as.numeric(fit$Survival_Probs), rep(tail_mass(fit), 3))
+}
+
+# The conditional exponential tail retains its fitted mass and supplied rate.
+# Use shifted R distribution functions as an independent reference, including
+# large tau where the unconditional exponential survival underflows to zero.
+for (tau in c(3, 2000)) for (rate in c(0.7, 2)) for (allocated in 0:1) {
+    data <- rbind(c(1, 1), c(2, 2), c(tau, Inf))
+    points <- c(tau + 1, NA_real_, tau, Inf, tau + 0.01, NaN, -Inf, tau + 1)
+    fit <- survPT(data, test_seq = points, prior = 2, prior_params = rate,
+                  max_M = 0, max_EM_iter = 3, allocated = allocated, verbose = FALSE)
+    native <- SurvPT(data, points, 2, c(0, Inf), 0L, rate,
+                     allocated, 3L, 1e-10, FALSE)
+    near(tail_mass(fit), 1/4)
+    valid <- c(1, 3, 4, 5, 8)
+    expected_s <- 1/4 * pexp(points[valid] - tau, rate, lower.tail = FALSE)
+    near(as.numeric(fit$Survival_Probs[valid]), expected_s)
+    near(as.numeric(native$survival_probs[valid]), expected_s)
+    beyond <- c(1, 4, 5, 8)
+    expected_d <- 1/4 * dexp(points[beyond] - tau, rate)
+    near(as.numeric(fit$Density[beyond]), expected_d)
+    near(as.numeric(native$density_probs[beyond]), expected_d)
+    # An exact event at tau still uses the finite body's density on its left.
+    near(as.numeric(fit$Density[3]), 3/4 * dexp(tau, rate)/pexp(tau, rate))
+    stopifnot(all(is.na(fit$Survival_Probs[c(2, 6)])),
+              all(is.na(fit$Density[c(2, 6)])),
+              all(is.na(native$survival_probs[c(2, 6)])),
+              all(is.na(native$density_probs[c(2, 6)])),
+              fit$Survival_Probs[7] == 1, fit$Density[7] == 0)
 }
 
 # Boundary mode updates and a default grid built from all finite endpoints.

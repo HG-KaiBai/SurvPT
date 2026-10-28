@@ -53,11 +53,19 @@ These plug-in parameters are held fixed by the tree fit. Their estimation uncert
 
 ## Choose support and evaluation points
 
-With the default `support = c(0, Inf)`, all three bases use a finite tree ending at `tau = max(finite observed endpoints)` and an unresolved tail of mass `p_tail`. The internal first-layer probability `q_0 = 1 - p_tail` has a `Beta(0.5, 0.5)` prior and is updated in every EM iteration. No additional argument is required. Initial allocation uses the prior mean; the tree uses its existing mode-style branch updates. `S(tau) = p_tail`; survival and density beyond `tau` are `NA` at finite evaluation times because no tail shape is assumed. See [Methods](methods.md) for the likelihood and initialization.
+With the default `support = c(0, Inf)`, all three bases use a finite tree ending at `tau = max(finite observed endpoints)` and a tail of mass `p_tail`. The internal first-layer probability `q_0 = 1 - p_tail` has a `Beta(0.5, 0.5)` prior and is updated in every EM iteration. No additional argument is required. Initial allocation uses the prior mean; the tree uses its existing mode-style branch updates. `S(tau) = p_tail`. For finite `t > tau`:
+
+| Base | Survival | Density |
+| --- | --- | --- |
+| Uniform | `S(tau)` (constant extension) | `NA` |
+| Exponential | `S(tau) * exp(-lambda * (t - tau))` | `lambda * S(t)` |
+| Weibull | `NA` | `NA` |
+
+The exponential tail is the base distribution conditioned on `T > tau`; its rate `lambda = prior_params` stays fixed during fitting. At positive infinity, survival and density return zero for all bases. See [Methods](methods.md) for the likelihood and initialization.
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 
-Supply `test_seq` explicitly for reproducible comparisons. The default grid includes all finite endpoints, including late right-censoring times, and works for entirely right-censored data with `tau > support[1]`. For plotting, choose a sorted finite grid ending at `tau`. Fitting is unchanged by the choice of evaluation grid.
+Supply `test_seq` explicitly for reproducible comparisons. The default grid includes all finite endpoints, including late right-censoring times, and works for entirely right-censored data with `tau > support[1]`. For plotting, choose a sorted finite grid; uniform and exponential survival curves can extend beyond `tau` as described above. Fitting is unchanged by the choice of evaluation grid.
 
 ## Control tree size and iteration
 
@@ -72,7 +80,7 @@ Supply `test_seq` explicitly for reproducible comparisons. The default grid incl
 
 | Field | Meaning |
 | --- | --- |
-| `Left`, `Right` | Node interval boundaries, including the unresolved tail `[tau, Inf)` for unbounded support |
+| `Left`, `Right` | Node interval boundaries, including the tail `[tau, Inf)` for unbounded support |
 | `Level` | Depth of each node; root is zero |
 | `Allocations` | Fractional counts assigned to nodes at the returned iteration |
 | `Posterior_Probs` | Estimated node masses for both internal and terminal nodes |

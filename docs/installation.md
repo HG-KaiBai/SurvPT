@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.3.0.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.3.1.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.3.0.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.3.1.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -65,4 +65,6 @@ Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Ex
 
 Version 0.2.0 changes censored-data allocations for exponential and Weibull PT bases and for the uniform infinite terminal interval. Refit analyses made with 0.1.0 instead of assuming identical estimates. Record `packageVersion("SurvPT")`, `sessionInfo()`, the chosen support, base parameters, stopping controls, and source commit or archive checksum.
 
-Version 0.3.0 adds an internal Beta-prior body/tail split at the largest finite observed endpoint for unbounded support. It replaces the uniform cutoff and leaves tail shape unspecified for all bases. Cached leaf probabilities accelerate EM while preserving its update rules. Refit earlier analyses to use the new tail model; see [Methods](methods.md).
+Version 0.3.0 adds an internal Beta-prior body/tail split at the largest finite observed endpoint for unbounded support. It replaces the uniform cutoff and leaves tail shape unspecified for all bases. Cached leaf probabilities accelerate EM while preserving its update rules.
+
+Version 0.3.1 carries uniform survival forward as `S(tau)` at finite times beyond `tau` and uses a conditional exponential tail for the exponential base. Weibull tail predictions remain unchanged. Refit earlier analyses to use the updated tail predictions; see [Methods](methods.md).

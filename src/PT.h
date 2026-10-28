@@ -43,7 +43,7 @@ public:
     List output(); // output results
 
 private:
-    bool has_tail; // an unresolved tail is the right child (index 2) of the root
+    bool has_tail; // the tail is the right child (index 2) of the root
     void prepare_observation_cache();
     void update_expected_allocations();
     // Nonzero (leaf index, conditional observation probability/density) entries.

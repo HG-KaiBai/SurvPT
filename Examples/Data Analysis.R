@@ -46,7 +46,7 @@ pt_boot <- function(data, B = 1000){
   x = seq(0, max(obs.mat), by = max(obs.mat)/200)
   exp_par = estimate_exp(data[,1], data[,2])
 
-  fit = survPT(data, test_seq = x, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
+  fit = survPT(data, test_seq = x, prior = 2, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
   surv_probs = fit$Survival_Probs
 
 
@@ -55,7 +55,7 @@ pt_boot <- function(data, B = 1000){
     indices = sample(1:n, n, replace = TRUE)
     boot_data = data[indices, ]
     exp_par = estimate_exp(data[,1], data[,2])
-    boot_fit = survPT(boot_data, test_seq = x, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
+    boot_fit = survPT(boot_data, test_seq = x, prior = 2, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
     return(c(boot_fit$Survival_Probs))
   }, mc.cores = 1)
 
@@ -75,11 +75,11 @@ time = c()
 
 obs.mat = c(data$L[!is.infinite(data$L)], data$R[!is.infinite(data$R)])
 x = seq(0, max(obs.mat), by = max(obs.mat)/200)
-grid = seq(0, max(obs.mat), length.out = 100)
+grid = seq(0, max(obs.mat), length.out = 200)
 
 tryCatch({
   start_time <- Sys.time()
-  fit = pt_boot(data, B = 100)
+  fit = pt_boot(data, B = 1000)
   pt_surv = fit$surv_probs
   pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
   time = c(time, pt_time)
@@ -105,7 +105,7 @@ fid_upper = 1 - fid[[3]]
 
 plot = ggplot()+
   geom_step(aes(x = x, y = pt_surv, color = "PT Estimate"), size = 1)+
-  #geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
+  geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
   geom_step(aes(x = x, y = fiducial_surv, color = "Fiducial Estimate"), size = 1)+
   geom_ribbon(aes(x = x, ymin = fid_lower, ymax = fid_upper, fill = "Fiducial Estimate"), alpha = 0.2)+
   labs(x = "Time",

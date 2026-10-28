@@ -471,8 +471,15 @@ double PT::base_density(double x) const {
 }
 
 double PT::terminal_probability(double left, double right, double a, double b) const {
-    if (has_tail && a == largest_obs && !arma::is_finite(b))
-        return right == arma::datum::inf && left <= largest_obs ? 1.0 : 0.0;
+    if (has_tail && a == largest_obs && !arma::is_finite(b)) {
+        if (prior != 2)
+            return right == arma::datum::inf && left <= largest_obs ? 1.0 : 0.0;
+        const double lo = max(left, a);
+        if (lo >= right) return 0.0;
+        const double lambda = prior_params(0);
+        // Conditional exponential tail, avoiding division by exp(-lambda * tau).
+        return exp(-lambda * (lo - a)) * -expm1(-lambda * (right - lo));
+    }
     const double lo = max(left, a);
     const double hi = min(right, b);
     if (lo >= hi) {
@@ -493,6 +500,8 @@ double PT::terminal_density(double t, double a, double b) const {
     if (t < a || t > b || (t == a && a > support(0))) {
         return 0.0;
     }
+    if (has_tail && prior == 2 && a == largest_obs && !arma::is_finite(b))
+        return prior_params(0) * exp(-prior_params(0) * (t - a));
     const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
     if (denom > SMALL_VALUE) {
         return prior == 1 ? 1.0 / denom : base_density(t) / denom;
@@ -518,17 +527,23 @@ List PT::output() {
 
     for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
         const double t = test_seq(i);
-        if (std::isnan(t) || (has_tail && t > largest_obs && arma::is_finite(t))) {
+        if (std::isnan(t)) {
             survival_probs(i) = NA_REAL;
             density_probs(i) = NA_REAL;
             continue;
         }
-        double s = has_tail && t <= largest_obs ? posterior_probs(2) : 0.0;
+        if (has_tail && prior != 2 && t > largest_obs && arma::is_finite(t)) {
+            // Carry the uniform survival curve forward from tau.
+            survival_probs(i) = prior == 1 ? posterior_probs(2) : NA_REAL;
+            density_probs(i) = NA_REAL;
+            continue;
+        }
+        double s = has_tail && prior != 2 && t <= largest_obs ? posterior_probs(2) : 0.0;
         double d = 0.0;
 
         for (arma::uword r = 0; r < terminal_nodes.n_rows; ++r) {
             const int node = static_cast<int>(terminal_nodes(r));
-            if (has_tail && node == 2) continue;
+            if (has_tail && prior != 2 && node == 2) continue;
             const double a = left_bound(node);
             double b = right_bound(node);
             const double w = posterior_probs(node);
