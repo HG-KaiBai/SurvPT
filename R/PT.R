@@ -1,92 +1,72 @@
-#' Fit a finite Polya tree to censored event times
+#' Fit a finite Polya tree with a Beta-prior tail split
 #'
-#' Estimate a univariate survival function and density from exact, interval-
-#' censored, right-censored, or current-status observations. The partition is
-#' fixed after initialization; the default fit iteratively reallocates censored
-#' observations using conditional terminal-node base distributions.
-#'
-#' @param X Numeric matrix or data frame whose first two columns contain the
-#'   left and right observation endpoints, in that order. Additional columns
-#'   are ignored. Use `L == R` for an exact event, `R = Inf` for right censoring,
-#'   and `L = 0` for an event observed before a positive inspection time.
-#'   A status column is not used. Missing values are not supported.
-#' @param prior Base distribution: `1` for uniform, `2` for exponential,
-#'   or `3` for Weibull.
-#' @param support Numeric vector `c(lower, upper)` with `lower < upper`.
-#'   The default is `c(0, Inf)`. Use nonnegative time support and observation
-#'   intervals compatible with it. A finite bound is a modeling assumption.
-#' @param max_M Nonnegative integer maximum tree depth; the root is level zero.
-#'   A node also stops splitting if its initial allocated count is below one.
-#'   Large depths can require excessive memory; start with a modest value.
-#' @param prior_params `NULL` for uniform (ignored), one positive rate `lambda`
-#'   for exponential, or two positive values `c(lambda, k)` for Weibull.
-#'   The Weibull shape is `k` and scale is `1 / lambda`.
-#' @param allocated `1` (default) for fractional allocation with EM updates;
-#'   `0` for the legacy overlap-count initialization without EM.
-#' @param max_EM_iter Nonnegative integer maximum number of EM updates.
-#'   Zero returns the initialized fit.
-#' @param EM_tol Nonnegative stopping tolerance for the Euclidean norm of the
-#'   change in terminal-node masses. No convergence flag is returned.
-#' @param verbose Logical; print iteration progress if `TRUE`.
-#' @param test_seq Numeric evaluation points, preferably a sorted finite grid.
-#'   If `NULL`, uses 200 points from `support[1]` to the largest endpoint among
-#'   rows with finite right endpoints. Supply a grid explicitly when no such
-#'   rows exist or when comparing fits.
+#' @param X Numeric matrix or data frame. The first two columns are left and
+#'   right observation endpoints. Use equal endpoints for exact events and
+#'   a right endpoint of `Inf` for right censoring. Additional columns are ignored.
+#' @param prior Prior type, (1: Uniform, 2: Exponential, 3: Weibull)
+#' @param support Numeric vector of lower and upper support bounds, default
+#'   `c(0, Inf)`. Left endpoints must be finite and within nonnegative support;
+#'   exact events must exceed the lower bound.
+#' @param max_M Maximum depth within the finite subtree. The added body/tail
+#'   split does not consume this budget; reported levels include it.
+#' @param prior_params `NULL` for uniform, a positive rate for exponential,
+#'   or positive `c(lambda, k)` for Weibull (shape `k`, scale `1/lambda`).
+#' @param allocated `1` for fractional EM allocation; `0` for legacy overlap
+#'   initialization without EM.
+#' @param max_EM_iter Maximum number of EM iterations
+#' @param EM_tol Tolerance for EM convergence
+#' @param verbose Logical, whether to print progress messages
+#' @param test_seq Evaluation grid; by default, 200 points from the lower
+#'   support bound to the largest finite observed endpoint, including censoring times.
 #'
 #' @details
-#' Since version 0.2.0, EM allocation probabilities and the returned survival
-#' function and density use the same selected base distribution conditioned on
-#' each terminal interval. The exponential base survival is `exp(-lambda * t)`;
-#' the Weibull base survival is `exp(-(lambda * t)^k)`.
-#' A uniform terminal interval with an infinite right endpoint is capped at
-#' 1.1 times the largest finite endpoint in the first two columns of `X`.
-#' Exponential and Weibull terminal intervals retain their infinite tails.
-#' This cutoff does not replace `Inf` in the returned `Right` boundaries.
+#' With infinite upper support, `tau` is the largest finite observed endpoint.
+#' A new root separates the finite subtree from an unresolved `[tau, Inf)`
+#' tail. Its left probability has the internal first-level prior
+#' `q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
+#' Initial censored allocations use the Beta prior mean `0.5` and the
+#' selected base conditioned on the finite body. The first layer then uses
+#' the same clipped mode-style update as other PT branches, at initialization
+#' and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n - 1))`,
+#' with a one-half fallback when the denominator is nonpositive or tiny.
+#' This is not a posterior-mean update; the fallback need not be an exact MAP
+#' for Beta shapes below one. Internal PT alpha values retain their original
+#' finite-subtree depths. No separate scalar MLE is performed.
 #'
-#' Intervals represent `(L, R]`, with exact events treated separately. Exact
-#' events must lie strictly above the root's lower endpoint. Input validation
-#' is incomplete: check numeric types, missing values, endpoint ordering,
-#' support compatibility, and integer iteration controls before fitting.
+#' If `f` and `P` are the conditional finite-tree density and probability,
+#' exact events contribute `q_0 * f(t)`, finite intervals contribute
+#' `q_0 * P(L < T <= R)`, and right censoring at `C < tau` contributes
+#' `q_0 * P(C < T <= tau) + p_tail`. Right censoring at `tau` contributes
+#' `p_tail`. Exact events at split points, including `tau`, use the interval
+#' on the left. The first-layer probability is updated along with the tree.
 #'
-#' Branch masses use a clipped, mode-style update with depth-dependent prior
-#' parameters, not posterior draws or the usual posterior-mean update.
-#' The function does not estimate uncertainty intervals, covariate effects,
-#' multivariate distributions, or a sampling-truncation likelihood.
+#' Survival at `tau` equals `p_tail`. Tail shape is unspecified, so survival
+#' and density at finite points greater than `tau` return `NA`; at positive
+#' infinity they return zero. Bounded support adds no tail node. The observed
+#' log-likelihood need not increase under the prior-adjusted mode-style updates.
 #'
-#' @return A list with the following components. Armadillo vectors can appear
-#'   as one-column matrices; use `as.numeric()` if a plain vector is needed.
-#'   \describe{
-#'     \item{Left, Right}{Node interval boundaries.}
-#'     \item{Level}{Node depths, with the root at zero.}
-#'     \item{Allocations}{Allocated observation counts, possibly fractional.}
-#'     \item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
-#'     \item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
-#'       masses at these indices to check total probability.}
-#'     \item{Test_seq}{The evaluation grid.}
-#'     \item{Survival_Probs}{Estimated survival probabilities at the grid.}
-#'     \item{Density}{Estimated density at the grid.}
-#'   }
-#'   The wrapper does not return `Alpha`, posterior samples, or convergence
-#'   diagnostics.
-#' @seealso \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
-#'   \code{\link{SurvPT}()} for the low-level interface.
+#' @returns A list containing `Left`, `Right`, `Level`, `Allocations`,
+#'   `Posterior_Probs`, and one-based `Terminal_Nodes`; terminal masses sum to
+#'   one including the tail. `Test_seq`, `Survival_Probs`, and `Density` contain
+#'   grid predictions. `tau` is `NA` for bounded support. Body and tail masses
+#'   are included in the existing node arrays without separate return fields.
+#'   `LogLik` and `LogLik_Trace` report observed
+#'   log-likelihood (initialization and each EM step; empty trace without EM).
+#'   `EM_Iterations` counts updates; `Converged` indicates whether terminal-mass
+#'   tolerance was reached, and is `FALSE` when no updates were run.
 #' @export
 #'
 #' @examples
-#' x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
-#'                 R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
-#' fit <- survPT(x, prior = 2, prior_params = 0.5,
-#'               test_seq = seq(0, 6, length.out = 31),
-#'               max_M = 4, max_EM_iter = 30, verbose = FALSE)
-#' sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-#' head(as.numeric(fit$Survival_Probs))
+#' data <- data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
+#' out <- survPT(X = data)
 survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE) {
     X = as.matrix(X)
     # The first column and second column of X are the observed left bound and right bound, respectively.
-    if (!is.matrix(X) || ncol(X) < 2 || (any(X[,2] < X[,1]))) {
+    if (!is.numeric(X) || nrow(X) == 0 || ncol(X) < 2 ||
+        anyNA(X[, 1:2]) || any(!is.finite(X[, 1])) || any(X[,2] < X[,1])) {
         stop("Invalid input data X.")
     }
-    if (! is.numeric(prior) || length(prior) != 1 || prior %in% c(1, 2, 3) == FALSE){
+    if (! is.numeric(prior) || length(prior) != 1 || is.na(prior) || prior %in% c(1, 2, 3) == FALSE){
         stop("Invalid input prior.")
     }
     if (prior == 2 && (length(prior_params) != 1 || any(prior_params <= 0))) {
@@ -95,12 +75,19 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
     if (prior == 3 && (length(prior_params) != 2 || any(prior_params <= 0))) {
         stop("Please provide two positive prior parameters for Weibull prior.")
     }
-    if (! is.numeric(support) || length(support) != 2 || support[1] >= support[2]) {
+    if (! is.numeric(support) || length(support) != 2 || anyNA(support) ||
+        !is.finite(support[1]) || support[1] < 0 || support[1] >= support[2]) {
         stop("Invalid input support.")
     }
 
+    for (control in list(max_M, max_EM_iter)) {
+        if (!is.numeric(control) || length(control) != 1 || !is.finite(control) ||
+            control < 0 || control != floor(control) || control > .Machine$integer.max - 1)
+            stop("Tree depth and iteration limits must be nonnegative integers.")
+    }
     if (is.null(test_seq)){
-        test_seq = seq(support[1], max(X[is.finite(X[,2]),1:2]), length.out = 200)
+        endpoints = X[, 1:2]
+        test_seq = seq(support[1], max(endpoints[is.finite(endpoints)]), length.out = 200)
     }
 
     # Handle NULL prior_params for uniform prior
@@ -117,7 +104,12 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
                   "Terminal_Nodes" = out$terminal_nodes + 1,
                   "Test_seq" = test_seq,
                   "Survival_Probs" = out$survival_probs,
-                  "Density" = out$density_probs
+                  "Density" = out$density_probs,
+                  "tau" = out$tau,
+                  "LogLik" = out$log_likelihood,
+                  "LogLik_Trace" = out$loglik_trace,
+                  "EM_Iterations" = out$em_iterations,
+                  "Converged" = out$converged
                   )
     return(out_PT)
 }

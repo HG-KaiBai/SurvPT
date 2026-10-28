@@ -3,3 +3,4 @@
 ^\.codex$
 ^\.vscode$
 ^SurvPT_[0-9.]+\.tar\.gz$
+^\.pt-validation$

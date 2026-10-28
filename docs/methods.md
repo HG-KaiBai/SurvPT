@@ -2,15 +2,15 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.0, including its partition, allocation updates, and tail conventions.
+This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.3.0, including its partition, allocation updates, and tail conventions.
 
 ## Finite PT partition
 
-`survPT()` partitions the declared support into a binary tree. For a finite uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the parent interval. For a uniform interval with infinite right endpoint, the split uses the data-dependent cutoff `C = 1.1 * largest_obs` and the current depth, where `largest_obs` is the largest finite value in the first two columns of `X`.
+With infinite upper support, `survPT()` first splits at `tau`, the largest finite endpoint in the first two columns of `X`, including right-censoring times. The root's left child is the finite PT subtree with mass `theta_0`; its right child is an unresolved `[tau, Inf)` tail with mass `p_tail = 1 - theta_0`. Only the finite subtree is subdivided. For a uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the finite parent interval. A finite upper support retains the bounded tree without an extra root split.
 
-Splitting ends at `max_M` or when the initial allocated count is below one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
+Splitting ends at `max_M` within the finite subtree or when the initial allocated count is below one. The added root split does not consume this depth budget: with unbounded support, the finite subtree root is reported at level one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
-For children at depth `l`, the branch prior parameter is `alpha_l = l^2 / 2`. The current branch-mass update computes
+For finite-subtree children at relative depth `l`, the branch prior parameter is `alpha_l = l^2 / 2`. The branch-mass update computes
 
 \[
 q_L=\operatorname{clip}_{[0,1]}
@@ -18,6 +18,28 @@ q_L=\operatorname{clip}_{[0,1]}
 \]
 
 with a one-half fallback when the denominator is too small. Child masses are parent mass times these branch proportions. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
+
+## Beta prior for the first layer
+
+Let `f` and `P_f` denote the conditional finite-subtree density and probabilities. The observed likelihood contributions are:
+
+| Observation | Contribution |
+| --- | --- |
+| Exact `t <= tau` | `theta_0 * f(t)` |
+| Finite interval `(L, R]`, `R <= tau` | `theta_0 * P_f(L < T <= R)` |
+| Right censored at `C < tau` | `theta_0 * P_f(C < T <= tau) + p_tail` |
+| Right censored at `tau` | `p_tail` |
+
+The first layer has the internal prior `q_0 ~ Beta(a,b)` with `a = b = 0.5`, matching the original first-level PT prior. Here `q_0 = theta_0` and `p_tail = 1 - q_0` are mathematical notation, not separate return fields; masses remain in the existing node arrays. Initialization uses the prior mean `0.5` to allocate censored observations between the finite conditional base and the tail. Once allocated counts are available, the first layer uses the same clipped mode-style rule as the PT branches:
+
+\[
+q_0^{\mathrm{new}}=\operatorname{clip}_{[0,1]}
+\frac{a+n_{\mathrm{body}}-1}{a+b+n_{\mathrm{body}}+n_{\mathrm{tail}}-2}.
+\]
+
+When the denominator is nonpositive or at most `1e-300`, the existing one-half fallback is used. With fractional allocations, `n_body + n_tail = n`. The corresponding complete-data Beta parameters are `a + n_body` and `b + n_tail`; this is not their posterior-mean update. The clipped rule and fallback need not equal the exact MAP when a Beta shape is below one.
+
+In every EM iteration the E-step includes current tail mass in each right-censoring denominator, and **updates `q_0` and `p_tail` along with the finite tree**. There is no separate scalar MLE or frozen first-layer probability. The finite subtree retains its original alpha schedule relative to its own root; adding this layer does not shift those alpha values or consume `max_M`. `LogLik_Trace` reports observed log-likelihood, which need not increase under the prior-adjusted mode-style updates. Bounded support has no extra split.
 
 ## Conditional base distribution inside terminal intervals
 
@@ -42,15 +64,17 @@ The fitted density and survival function mix these conditional distributions usi
 w_{i,B}=\frac{P(T_i\in B\cap I_i)}{P(T_i\in I_i)}.
 \]
 
-Exact observations are assigned directly by their event times. Probability computations use direct exponential differences and a small-denominator guard; extreme tail parameters can still suffer numerical cancellation or underflow.
+Exact observations are assigned directly by their event times. At internal boundaries and at `tau`, exact-event densities use the interval on the left, matching the allocation convention. Probability computations use direct exponential differences and a small-denominator guard; extreme tail parameters can still suffer numerical cancellation or underflow.
 
-## Three meanings of truncation
+The fixed partition allows conditional observation probabilities (and exact-event densities) to be computed once and cached as nonzero observation/leaf pairs. Each E-step weights these entries by the previous leaf masses and sums them up the tree once per observation. This replaces repeated integration over every leaf for every child node. With `n` observations, `K` nodes and `L` leaves, the worst-case allocation cost per iteration drops from `O(n K L)` to `O(n K)`; the additional cache stores only nonzero pairs (at most `n L`). Child links are cached too, and the log-likelihood reuses the same observation probabilities. The partition, alpha updates, containment shortcuts and stopping criterion are unchanged; reordered sums can introduce floating-point rounding differences.
+
+## Tail interpretation
 
 1. **Tree truncation:** stopping recursive partitioning at a finite depth or low initial count.
 2. **Conditional base truncation:** restricting and renormalizing a base distribution inside one terminal interval.
-3. **Uniform time cutoff:** replacing the infinite right endpoint of a uniform PT leaf by `C = 1.1 * largest_obs` for both EM and output.
+3. **Unresolved tail mass:** retaining `p_tail` beyond the largest finite observed endpoint, without specifying a density there.
 
-The third is a modeling choice in this implementation. Exponential and Weibull PT bases do not impose that finite cutoff: an exponential tail leaf has distribution `a + Exp(lambda)`, while a Weibull tail leaf follows the original Weibull law conditional on `T > a`. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
+There is no longer a factor-1.1 uniform cutoff. For all three bases, `S(tau) = p_tail`, and the finite density integrates to `theta_0`. Tail shape is unidentified: survival and density return `NA` at finite times strictly greater than `tau`, and zero at positive infinity. The tail is included in `Terminal_Nodes`, so all terminal masses sum to one. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
 
 ## Implementation map
 
@@ -61,5 +85,6 @@ The third is a modeling choice in this implementation. Exponential and Weibull P
 | `R/MLE_estimate.R` | Parametric likelihoods, gradients, and optimization |
 | `R/data_example.R` | Simulation generators |
 | `tests/pt-conditional-base.R` | Conditional allocation, output, mass, and tail regression checks |
+| `tests/pt-tail-root.R` | Beta-prior initialization, first-layer EM updates, likelihood and endpoint checks |
 
-`survPT()` provides point estimates. It does not return posterior samples, credible intervals, automatic tuning selection, or proof of convergence.
+`survPT()` provides point estimates, an observed log-likelihood trace, and a terminal-mass convergence flag. It does not return posterior samples, credible intervals, automatic tuning selection, or proof of convergence to a global optimum.

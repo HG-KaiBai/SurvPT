@@ -6,10 +6,10 @@
 
 | Limitation | Practical consequence |
 | --- | --- |
-| `survPT()` returns point estimates only | No built-in confidence bands, posterior draws, or convergence flag |
+| `survPT()` returns point estimates | No built-in confidence bands or posterior draws; its convergence flag only checks terminal-mass changes |
 | Inputs are univariate with no covariates | No multivariate joint survival or regression interface |
 | No sampling-truncation or delayed-entry arguments | Do not treat the `support` setting as a delayed-entry correction |
-| Uniform PT uses a data-dependent upper cutoff | Its estimated survival becomes zero beyond that cutoff |
+| The tail shape beyond `tau` is unspecified | Only its total mass is estimated; survival and density at finite times beyond `tau` return `NA` |
 | Partition is fixed after initialization | EM does not revisit early stopping or split locations |
 | Direct exponentials and CDF differences are used | Extreme rates, shapes, or tail locations can lose precision |
 | Input checks are incomplete | Validate missing values, numeric types, interval ordering, support, and iteration controls yourself |
@@ -35,11 +35,11 @@ These limitations are documented to distinguish observed software behavior from 
 
 **The loaded version is not the installed version.** Restart R, run `find.package("SurvPT")`, inspect `.libPaths()`, and reinstall into the intended library. `devtools::load_all()` uses a checkout, whereas `library(SurvPT)` loads an installed package.
 
-**An evaluation grid cannot be generated.** Supply a finite sorted `test_seq`. The PT default grid relies on rows with a finite right endpoint; all-right-censored data need an explicit grid and may also contain insufficient information for the intended fit.
+**An evaluation grid cannot be generated.** Check for valid finite left endpoints. The default grid includes right-censoring times. Infinite-support fits require the largest finite endpoint to exceed the lower support bound. All-right-censored data do not identify a finite-body distribution; its fitted mass depends on the Beta prior and mode-style updates.
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 
-**A uniform curve reaches zero unexpectedly early.** Inspect the largest finite endpoint and the factor-1.1 cutoff. Use a scientifically appropriate exponential or Weibull base if an unbounded PT tail is required.
+**A curve stops at `tau`.** The unresolved tail has mass `p_tail`, but no shape. All three bases return `NA` beyond `tau` at finite times; this does not mean the tail mass is zero.
 
 **A historical simulation fails on Windows.** Scripts using `parallel::mclapply()` with multiple forked workers require adaptation. Start serially with one worker, or implement and validate a socket-cluster workflow.
 

@@ -14,7 +14,8 @@
 #' @param test_seq Numeric evaluation points.
 #' @param prior Integer base selector: `1` uniform, `2` exponential, `3` Weibull.
 #' @param support Numeric vector of lower and upper support bounds.
-#' @param max_M Nonnegative integer maximum tree depth.
+#' @param max_M Nonnegative integer maximum finite-subtree depth, excluding
+#'   the added body/tail split when upper support is infinite.
 #' @param prior_params Numeric base parameters: one rate for exponential,
 #'   `c(lambda, k)` for Weibull, or an ignored numeric placeholder for uniform.
 #' @param allocated `1` for EM allocation or `0` for legacy overlap counts.
@@ -29,7 +30,9 @@
 #'
 #' @return A list with native names: `left_bound`, `right_bound`, `node_levels`,
 #'   `alpha`, `n_obs_allocated`, `posterior_probs`, `terminal_nodes`,
-#'   `survival_probs`, and `density_probs`. The `alpha` component contains
+#'   `survival_probs`, `density_probs`, `tau`,
+#'   `log_likelihood`, `loglik_trace`, `em_iterations`, and `converged`.
+#'   The `alpha` component contains
 #'   branch prior parameters. Native `terminal_nodes` indices are **zero-based**;
 #'   add one before using them to index R arrays. Other components correspond
 #'   to those documented for \code{\link{survPT}()}.

@@ -6,7 +6,7 @@ The research scripts below support simulation and data-analysis work. Some execu
 
 | File | Purpose | Requirements and execution notes |
 | --- | --- | --- |
-| `test_function.R` | Historical estimator comparison and plotting | `devtools`, `interval`; calls `View()` and refers to `fid` although its construction is commented out |
+| `test_function.R` | Uniform/exponential PT, OPT, NPMLE, MPT, and TBP comparison and plotting | Run from the repository root; requires `devtools`, `interval`, `survival`, and `spBayesSurv` 1.1.9. Defines data, both PT fits, and a common grid through the largest finite endpoint; MPT/TBP use package-default MCMC. Fiducial calls are commented out. |
 | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
 | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
 | `bootstrap.R` | Helpers used by bootstrap comparisons | Assumes SurvPT, `interval`, and `boot` functions are attached; helper is tailored to three evaluation times and three estimators |

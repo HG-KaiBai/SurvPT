@@ -5,7 +5,7 @@
 [![Views](https://view-counter.tobyhagan.com/?user=USERNAME/REPO&base=555555&accent=181717&text=white&flat=true)](https://github.com/HG-KaiBai/SurvPT)
   
 
-SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.0**.
+SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.3.0**.
 
 The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) under the [MIT license](LICENSE.md).
 
@@ -57,6 +57,8 @@ sum(fit$Posterior_Probs[fit$Terminal_Nodes])  # approximately 1
 ```
 
 `prior_params = 0.5` is an exponential **rate**, not a mean. `survPT()` reads the first two columns of `X` as interval endpoints; it does not read a status column. Use `as.numeric()` when a returned Armadillo vector appears as a one-column matrix.
+
+With infinite upper support, the tree first separates a finite body ending at `fit$tau` from an unresolved tail. The first-layer probability uses an internal `Beta(0.5, 0.5)` prior and is updated in every EM iteration using the existing PT mode-style rule. No additional argument or separate body/tail probability fields are needed; these masses are part of the existing node arrays. Survival at `tau` equals the tail mass; finite evaluation times beyond `tau` return `NA` because the tail shape is unspecified. This replaces the former uniform cutoff at 1.1 times the largest endpoint.
 
 A runnable example covering all three PT bases is in [Examples/quickstart.R](Examples/quickstart.R). Simulation and data-analysis scripts, their dependencies, and validation commands are described in [Examples/README.md](Examples/README.md).
 

@@ -1,11 +1,42 @@
-# Historical interactive comparison; see Examples/README.md before running.
-# Requires devtools and interval. View() calls need an interactive session;
-# later fiducial plots also require constructing the currently commented-out fid.
-devtools::load_all()
+# Estimator comparison; run from the repository root (see Examples/README.md).
+# Requires devtools, interval, survival, and spBayesSurv 1.1.9.
+devtools::load_all(".", recompile = TRUE)
 library(interval)
 library(spBayesSurv)
 
-test_data = data_rc(123, 200, 1, 0.12, q = 0.3)
+n <- 500
+K <- 1
+Lambda <- 0.12
+test_data <- data_ic(123, n, K, Lambda, q = 0.3)
+
+# Both PT bases use the same observations, evaluation grid, and EM controls.
+# Stop the grid at tau: the unresolved tail has no specified density beyond it.
+endpoints <- as.matrix(test_data[, c("L", "R")])
+tau <- max(endpoints[is.finite(endpoints)])
+x <- seq(0, tau, length.out = 200)
+
+cat("Fitting PT with uniform base...\n")
+result_unif <- survPT(test_data, test_seq = x, prior = 1,
+                      support = c(0, Inf), max_M = 8, allocated = 1,
+                      max_EM_iter = 200, EM_tol = 1e-6, verbose = TRUE)
+
+for (l in 0:9){
+  print(sum(result_unif$Posterior_Probs[result_unif$Level == l]))
+}
+print(sum(result_unif$Posterior_Probs[result_unif$Terminal_Nodes]))
+
+# Estimate the exponential base rate from the same censored observations.
+exp_par <- estimate_exp(test_data$L, test_data$R)
+cat("Fitting PT with exponential base...\n")
+result_exp <- survPT(test_data, test_seq = x, prior = 2, prior_params = exp_par,
+                     support = c(0, Inf), max_M = 8, allocated = 1,
+                     max_EM_iter = 200, EM_tol = 1e-6, verbose = TRUE)
+
+for (l in 0:9){
+  print(sum(result_exp$Posterior_Probs[result_exp$Level == l]))
+}
+print(sum(result_exp$Posterior_Probs[result_exp$Terminal_Nodes]))
+
 # All MPT/TBP helpers are defined here; only installed R packages are used.
 # Baseline mixed Polya tree using spBayesSurv 1.1.9.
 # Its public wrapper rejects ~1. A zero design column contributes exactly zero
@@ -115,7 +146,7 @@ for (l in 0:9){
 print(sum(result_opt$Posterior_Probs[result_opt$Terminal_Nodes]))
 
 grid = result_unif$Test_seq
-fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
+#fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
 
 # Encode censoring for Surv(interval2), leaving test_data unchanged.
 bayes_data <- data.frame(L = test_data$L, R = test_data$R)
@@ -169,10 +200,3 @@ lines(result_mpt$Test_seq, result_mpt$Density, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Density, col = "cyan4", lwd = 2)
 legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "OPT", "Fiducial", "MPT", "TBP"),
        col = c("red", "blue", "orange", "green", "purple", "brown", "cyan4"), lwd = 2)
-
-
-
-
-
-
-

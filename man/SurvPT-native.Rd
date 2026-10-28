@@ -14,16 +14,17 @@ columns; see \code{\link{survPT}()} for supported observation encodings.}
 
 \item{test_seq}{Numeric evaluation points.}
 
-\item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull.}
+\item{prior}{Integer base selector: `1` uniform, `2` exponential, `3` Weibull.}
 
 \item{support}{Numeric vector of lower and upper support bounds.}
 
-\item{max_M}{Nonnegative integer maximum tree depth.}
+\item{max_M}{Nonnegative integer maximum finite-subtree depth, excluding
+the added body/tail split when upper support is infinite.}
 
 \item{prior_params}{Numeric base parameters: one rate for exponential,
-\code{c(lambda, k)} for Weibull, or an ignored numeric placeholder for uniform.}
+`c(lambda, k)` for Weibull, or an ignored numeric placeholder for uniform.}
 
-\item{allocated}{\code{1} for EM allocation or \code{0} for legacy overlap counts.}
+\item{allocated}{`1` for EM allocation or `0` for legacy overlap counts.}
 
 \item{max_EM_iter}{Nonnegative integer maximum number of EM updates.}
 
@@ -32,12 +33,14 @@ columns; see \code{\link{survPT}()} for supported observation encodings.}
 \item{verbose}{Logical progress-output flag.}
 }
 \value{
-A list with native names: \code{left_bound}, \code{right_bound}, \code{node_levels},
-\code{alpha}, \code{n_obs_allocated}, \code{posterior_probs}, \code{terminal_nodes},
-\code{survival_probs}, and \code{density_probs}. The \code{alpha} component contains
-branch prior parameters. Native \code{terminal_nodes} indices are \strong{zero-based};
-add one before using them to index R arrays. Other components correspond
-to those documented for \code{\link{survPT}()}.
+A list with native names: `left_bound`, `right_bound`, `node_levels`,
+  `alpha`, `n_obs_allocated`, `posterior_probs`, `terminal_nodes`,
+  `survival_probs`, `density_probs`, `tau`,
+  `log_likelihood`, `loglik_trace`, `em_iterations`, and `converged`.
+  The `alpha` component contains
+  branch prior parameters. Native `terminal_nodes` indices are **zero-based**;
+  add one before using them to index R arrays. Other components correspond
+  to those documented for \code{\link{survPT}()}.
 }
 \description{
 Direct Rcpp entry point for the PT implementation. Most users should call
@@ -46,9 +49,9 @@ terminal-node indices to R indexing. This interface is retained for
 compatibility and requires all arguments explicitly.
 }
 \details{
-Pass a numeric matrix as \code{X} and numeric vectors for vector arguments.
-For a uniform base, pass a numeric placeholder such as \code{c(0.12, 1)} for
-\code{prior_params}; it is ignored. The wrapper's input validation is bypassed.
+Pass a numeric matrix as `X` and numeric vectors for vector arguments.
+For a uniform base, pass a numeric placeholder such as `c(0.12, 1)` for
+`prior_params`; it is ignored. The wrapper's input validation is bypassed.
 Use the endpoint, support, and parameter conventions in \code{\link{survPT}()}.
 }
 \seealso{

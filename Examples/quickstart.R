@@ -1,11 +1,13 @@
-# SurvPT 0.2.0: small, reproducible examples using only installed dependencies.
+# SurvPT 0.3.0: small, reproducible examples using only installed dependencies.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)
 
 d <- data_rc(seed = 123, n = 40, K = 1.5, Lambda = 0.4, q = 0.3)
 x <- d[, c("L", "R")]
-grid <- seq(0, 12, length.out = 121)
+endpoints <- as.matrix(x)
+tau <- max(endpoints[is.finite(endpoints)])
+grid <- seq(0, tau, length.out = 121)
 
 fits <- list(
   uniform = survPT(x, test_seq = grid, prior = 1,
@@ -30,7 +32,7 @@ checks <- do.call(rbind, lapply(names(fits), function(name) {
 
 print(checks, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
-cat("Uniform PT has a finite cutoff; exponential and Weibull bases retain unbounded tails.\n")
+cat("All bases retain unresolved tail mass beyond tau; tail shape is unspecified.\n")
 
 # Optional plotting in an interactive R session:
 if (interactive()) {

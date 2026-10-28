@@ -53,26 +53,26 @@ These plug-in parameters are held fixed by the tree fit. Their estimation uncert
 
 ## Choose support and evaluation points
 
-The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `1.1 * max(finite observed endpoints)`. Exponential and Weibull PT outputs retain infinite tails. See [Methods](methods.md) for the conditional distributions within terminal intervals.
+With the default `support = c(0, Inf)`, all three bases use a finite tree ending at `tau = max(finite observed endpoints)` and an unresolved tail of mass `p_tail`. The internal first-layer probability `q_0 = 1 - p_tail` has a `Beta(0.5, 0.5)` prior and is updated in every EM iteration. No additional argument is required. Initial allocation uses the prior mean; the tree uses its existing mode-style branch updates. `S(tau) = p_tail`; survival and density beyond `tau` are `NA` at finite evaluation times because no tail shape is assumed. See [Methods](methods.md) for the likelihood and initialization.
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 
-Supply `test_seq` explicitly for reproducible comparisons. The PT default grid uses only rows with a finite right endpoint, so it may omit late right-censoring times and cannot be constructed from an entirely right-censored sample. For plotting, choose a sorted finite grid. Fitting is unchanged by the choice of evaluation grid.
+Supply `test_seq` explicitly for reproducible comparisons. The default grid includes all finite endpoints, including late right-censoring times, and works for entirely right-censored data with `tau > support[1]`. For plotting, choose a sorted finite grid ending at `tau`. Fitting is unchanged by the choice of evaluation grid.
 
 ## Control tree size and iteration
 
-- `max_M` is the maximum depth, with the root at level zero. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory or exceed integer-shift limits.
+- `max_M` is the maximum depth within the finite subtree. The extra body/tail split for unbounded support does not count toward it; reported levels include that split. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory.
 - A node also stops splitting when its **initial allocated count is below one**. The partition is fixed during subsequent updates.
 - `max_EM_iter` and `EM_tol` control allocation iterations.
 - The stopping criterion is the Euclidean norm of the change in terminal masses. It is not a likelihood or parameter-distance criterion.
-- `verbose = TRUE` prints progress. The returned list contains no convergence flag, iteration count, or objective history.
+- `verbose = TRUE` prints progress. `Converged`, `EM_Iterations`, and `LogLik_Trace` report stopping status and the observed likelihood history.
 - PT `allocated = 0` selects the legacy overlap-count initialization and skips EM. It is a different estimator, not a speed setting for the default fit.
 
 ## Interpret the result
 
 | Field | Meaning |
 | --- | --- |
-| `Left`, `Right` | Node interval boundaries; the last right boundary may still be `Inf` even when uniform PT uses a finite effective cutoff |
+| `Left`, `Right` | Node interval boundaries, including the unresolved tail `[tau, Inf)` for unbounded support |
 | `Level` | Depth of each node; root is zero |
 | `Allocations` | Fractional counts assigned to nodes at the returned iteration |
 | `Posterior_Probs` | Estimated node masses for both internal and terminal nodes |
@@ -80,6 +80,9 @@ Supply `test_seq` explicitly for reproducible comparisons. The PT default grid u
 | `Test_seq` | Evaluation points supplied to the fit |
 | `Survival_Probs` | Estimated `P(T > t)` at those points |
 | `Density` | Estimated density at those points |
+| `tau` | Largest finite observed endpoint; `NA` with bounded support |
+| `LogLik`, `LogLik_Trace` | Observed log-likelihood and its history from initialization through EM |
+| `EM_Iterations`, `Converged` | Number of updates and whether terminal-mass tolerance was reached |
 
 The user-facing PT wrapper does not return `Alpha`. Numeric arrays from RcppArmadillo may have one column; `as.numeric()` removes those dimensions. Sum only terminal masses when checking total probability:
 

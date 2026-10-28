@@ -3,6 +3,8 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <utility>
+#include <vector>
 
 using namespace Rcpp;
 using namespace arma;
@@ -36,14 +38,21 @@ public:
     void init_allocations(int parent, int left_child, int right_child); // update number of observations allocated to each node
     double init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on prior
     void re_allocation(); // update allocations by the previous PT distribution
-    void update_allocations(int parent, int left_child, int right_child); // update allocations for children nodes
-    double update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on posterior
     void update_tree_size(); // double the size of the tree when necessary
     void EM_step(); // perform EM algorithm to update allocations and posterior probabilities
     List output(); // output results
 
 private:
-    double terminal_right_bound(double right) const;
+    bool has_tail; // an unresolved tail is the right child (index 2) of the root
+    void prepare_observation_cache();
+    void update_expected_allocations();
+    // Nonzero (leaf index, conditional observation probability/density) entries.
+    std::vector<std::vector<std::pair<int, double>>> observation_kernels;
+    std::vector<std::pair<int, int>> child_nodes;
+    double log_likelihood() const;
+    vec loglik_trace;
+    int em_iterations = 0;
+    bool converged = false;
     double base_survival(double x) const;
     double base_density(double x) const;
     double terminal_probability(double left, double right, double a, double b) const;

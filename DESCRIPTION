@@ -1,21 +1,19 @@
 Package: SurvPT
 Type: Package
 Title: Estimate the Survival Function from Interval Censored Data by Polya Tree
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: c(
     person(
       "Yixing", "Zhao",
       email = "y679zhao@uwaterloo.ca",
-      role = c("aut", "cre", "prg")
-    ),
-    person(
-      "Liqun", "Diao",
-      role = "aut"
+      role = c("aut", "cre")
     )
   )
-Description: Estimates survival functions from interval-censored observations
-    using finite Polya trees with uniform, exponential or Weibull conditional
-    base distributions and iterative allocation of censored observations.
+Description: Estimates survival functions from censored observations using
+    finite Polya trees with uniform, exponential or Weibull conditional base
+    distributions. An additional Beta-prior split represents unresolved tail
+    probability, and cached conditional probabilities accelerate iterative
+    allocation of censored observations.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -25,4 +23,3 @@ SystemRequirements: C++17
 URL: https://github.com/HG-KaiBai/SurvPT
 BugReports: https://github.com/HG-KaiBai/SurvPT/issues
 RoxygenNote: 7.3.3
-Roxygen: list(markdown = TRUE)
