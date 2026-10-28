@@ -1,3 +1,11 @@
+# SurvPT (development)
+
+- `survPT()` accepts scalar or subject-specific left-truncation times through
+  the optional `entry` argument. Initialization and EM add ghost expected
+  counts, retaining the existing branch updates. Log-likelihoods condition
+  on survival past entry. Truncation requires `allocated = 1`.
+- The default `entry = 0` retains the previous algorithm and output structure.
+
 # SurvPT 0.3.0
 
 - Unbounded-support PT fits now split first at the largest finite observed

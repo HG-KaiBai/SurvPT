@@ -1,0 +1,5 @@
+"method","log_likelihood","iterations","converged","stopping_rule","seconds","grid_RMSE","conditional_grid_RMSE"
+"SurvPT uniform",-322.072939372155,163,TRUE,"terminal-mass L2 <= 1e-08",2.41,0.0610373411396042,0.0216149652700803
+"SurvPT exponential",-322.673481673359,450,TRUE,"terminal-mass L2 <= 1e-08",6.92,0.0698730231632585,0.0144746707265697
+"NPMLE PL-ICM",-306.693368053846,99,TRUE,"absolute logLik change < 1e-05",0.0599999999999987,0.342391121132051,0.0456912823533007
+"NPMLE PL",-306.703281327311,2132,TRUE,"absolute logLik change < 1e-05",0.16,0.342391123148156,0.0457860717208543

@@ -60,6 +60,23 @@ sum(fit$Posterior_Probs[fit$Terminal_Nodes])  # approximately 1
 
 With infinite upper support, the tree first separates a finite body ending at `fit$tau` from an unresolved tail. The first-layer probability uses an internal `Beta(0.5, 0.5)` prior and is updated in every EM iteration using the existing PT mode-style rule. No additional argument or separate body/tail probability fields are needed; these masses are part of the existing node arrays. Survival at `tau` equals the tail mass; finite evaluation times beyond `tau` return `NA` because the tail shape is unspecified. This replaces the former uniform cutoff at 1.1 times the largest endpoint.
 
+For independent left truncation (delayed entry), pass each subject's entry time
+separately from the observation endpoints:
+
+```r
+x <- rbind(c(1, 1), c(1, 3), c(2, Inf))
+fit <- survPT(x, entry = c(0.2, 1.5, 1), verbose = FALSE)
+```
+
+`entry` may also be a scalar shared by all subjects. Exact event times and right
+endpoints must exceed entry; interval lower bounds are intersected with entry.
+Initialization and each E-step add `P(A intersect (0, entry]) / S(entry)` to the
+observed allocation for node `A`, keeping the existing branch update formula.
+`Allocations` includes these ghost counts, so its root can exceed the observed
+sample size. `LogLik` and its trace include the `-log(S(entry))` adjustment.
+Positive truncation within the support requires `allocated = 1`. Omitting
+`entry`, passing `entry = 0`, or passing a vector of zeros gives the same fit.
+
 A runnable example covering all three PT bases is in [Examples/quickstart.R](Examples/quickstart.R). Simulation and data-analysis scripts, their dependencies, and validation commands are described in [Examples/README.md](Examples/README.md).
 
 ## Documentation

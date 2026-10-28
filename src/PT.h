@@ -28,7 +28,7 @@ public:
     bool verbose; // print log info if true
 
     // constructor
-    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
+    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const vec entry);
 
     // functions
     void init(); // initialize the first tree structure
@@ -44,10 +44,17 @@ public:
 
 private:
     bool has_tail; // an unresolved tail is the right child (index 2) of the root
+    vec entry;
+    bool has_truncation;
+    double initial_truncation_allocation(int obs, double left, double right) const;
     void prepare_observation_cache();
     void update_expected_allocations();
+    void add_truncation_allocations();
+    double entry_survival(int obs) const;
     // Nonzero (leaf index, conditional observation probability/density) entries.
     std::vector<std::vector<std::pair<int, double>>> observation_kernels;
+    std::vector<std::vector<std::pair<int, double>>> truncation_kernels;
+    std::vector<std::vector<std::pair<int, double>>> entry_survival_kernels;
     std::vector<std::pair<int, int>> child_nodes;
     double log_likelihood() const;
     vec loglik_trace;

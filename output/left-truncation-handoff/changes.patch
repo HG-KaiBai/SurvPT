@@ -1,0 +1,631 @@
+diff --git a/Examples/README.md b/Examples/README.md
+index 59d7273..afcee57 100644
+--- a/Examples/README.md
++++ b/Examples/README.md
+@@ -7,6 +7,7 @@ The research scripts below support simulation and data-analysis work. Some execu
+ | File | Purpose | Requirements and execution notes |
+ | --- | --- | --- |
+ | `test_function.R` | Uniform/exponential PT, OPT, NPMLE, MPT, and TBP comparison and plotting | Run from the repository root; requires `devtools`, `interval`, `survival`, and `spBayesSurv` 1.1.9. Defines data, both PT fits, and a common grid through the largest finite endpoint; MPT/TBP use package-default MCMC. Fiducial calls are commented out. |
++| `test_ltrunc.R` | One simulated left-truncated, interval-censored dataset: uniform/exponential PT, PL/PL-ICM NPMLE, and true survival | Requires `devtools` and the authors' `ltic` package; installation commands are in the script. Uses the published Waller et al. Section 5.1 scheme, seed 123, and approximately 500 retained subjects. Saves a PNG, data, curves, fit diagnostics, and an RDS under `results/ltrunc/`; plots interactively when sourced in RStudio. |
+ | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
+ | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
+ | `bootstrap.R` | Helpers used by bootstrap comparisons | Assumes SurvPT, `interval`, and `boot` functions are attached; helper is tailored to three evaluation times and three estimators |
+@@ -34,4 +35,25 @@ The regression tests check conditional allocations, survival and density output,
+ 
+ ## Attribution
+ 
++`test_ltrunc.R` uses the data-generating scheme from Section 5.1 of Waller,
++Marshall, Kee, and Lamrock (2026), *A fast and stable algorithm for non-parametric
++maximum likelihood estimation of survival functions for left-truncated and
++interval-censored data*, [doi:10.1007/s11222-026-10984-9](https://doi.org/10.1007/s11222-026-10984-9).
++It calls the authors' [ltic package](https://github.com/ZacharyWaller/ltic) directly
++(tested revision `33ccd31a5920f29d65ced2b6c840a405ce07b9f7`). The first assessment
++uses `U(0, 4)` as stated in the article; the repository simulation uses `U(0, 2)`.
++The example sets `open_T = TRUE` to match SurvPT's strict event-after-entry
++convention; the authors' default is closed entry. The generator is continuous,
++so exact equality at entry has probability zero. The exponential PT base rate
++is fitted with the left-truncation likelihood. This is a single-dataset
++illustration, not a reproduction of the paper's repeated simulation study.
++It saves both unconditional curves and curves conditional on survival past the
++prespecified maximum entry time (`trunc_max`, default 0.6), applying the same
++conditioning to every estimator and the truth. The latter helps inspect the
++NPMLE's later shape when it has an early near-unit hazard, a boundary behavior
++discussed in the article. Neither the seed nor the dataset is replaced to avoid
++this behavior. `fit_summary.csv` records convergence, likelihood, iterations,
++elapsed time including preprocessing, and descriptive grid RMSE for both views;
++the PT and NPMLE stopping rules differ, so timings are not a controlled benchmark.
++
+ The fiducial comparison code and scenario labels relate to Cui, Hannig, and Kosorok (2024), *A Unified Nonparametric Fiducial Approach to Interval-Censored Data*, JASA 119(547), 2230–2241, [doi:10.1080/01621459.2023.2252143](https://doi.org/10.1080/01621459.2023.2252143). Preserve this attribution when adapting the routines. The local versions are modified research code, not a verified reproduction of the published experiments. See [Citations](../docs/citations.md).
+diff --git a/NEWS.md b/NEWS.md
+index d0dcf39..0c29f24 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -1,3 +1,11 @@
++# SurvPT (development)
++
++- `survPT()` accepts scalar or subject-specific left-truncation times through
++  the optional `entry` argument. Initialization and EM add ghost expected
++  counts, retaining the existing branch updates. Log-likelihoods condition
++  on survival past entry. Truncation requires `allocated = 1`.
++- The default `entry = 0` retains the previous algorithm and output structure.
++
+ # SurvPT 0.3.0
+ 
+ - Unbounded-support PT fits now split first at the largest finite observed
+diff --git a/R/PT.R b/R/PT.R
+index 1d8fb17..49be274 100644
+--- a/R/PT.R
++++ b/R/PT.R
+@@ -16,23 +16,41 @@
+ #' @param max_EM_iter Maximum number of EM iterations
+ #' @param EM_tol Tolerance for EM convergence
+ #' @param verbose Logical, whether to print progress messages
++#' @param entry Nonnegative finite entry (left-truncation) times, either one
++#'   value for all rows or a vector of length `nrow(X)`. Defaults to `0` (no
++#'   truncation). Each event must occur strictly after entry. Positive truncation
++#'   within the support requires `allocated = 1`.
+ #' @param test_seq Evaluation grid; by default, 200 points from the lower
+-#'   support bound to the largest finite observed endpoint, including censoring times.
++#'   support bound to the largest finite endpoint or entry time.
+ #'
+ #' @details
+-#' With infinite upper support, `tau` is the largest finite observed endpoint.
++#' With infinite upper support, `tau` is the largest finite endpoint after
++#' intersecting observation intervals with `(entry, Inf)`.
+ #' A new root separates the finite subtree from an unresolved `[tau, Inf)`
+ #' tail. Its left probability has the internal first-level prior
+ #' `q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
+ #' Initial censored allocations use the Beta prior mean `0.5` and the
+ #' selected base conditioned on the finite body. The first layer then uses
+ #' the same clipped mode-style update as other PT branches, at initialization
+-#' and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n - 1))`,
++#' and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n_total - 1))`,
+ #' with a one-half fallback when the denominator is nonpositive or tiny.
+ #' This is not a posterior-mean update; the fallback need not be an exact MAP
+ #' for Beta shapes below one. Internal PT alpha values retain their original
+ #' finite-subtree depths. No separate scalar MLE is performed.
+ #'
++#' Under independent left truncation and noninformative censoring, interval
++#' contributions are `P(max(L, entry) < T <= R) / S(entry)`; exact events
++#' contribute `f(t) / S(entry)`. Initial allocations and each E-step include
++#' the ghost count `P(A intersect (0, entry]) / S(entry)` for every node `A`,
++#' in addition to observed-subject allocations. Initial ghost counts use the
++#' same conditional base and body/tail prior mean as observed allocations.
++#' The root count `n_total` is the sum of `1 / S(entry)` under the distribution
++#' used for that allocation step; it replaces the sample size in the branch
++#' update denominator. The retained tree is fixed throughout EM.
++#' Entry times at or below the lower support bound have no truncation effect.
++#' All-zero `entry` uses the original calculations, including initialization.
++#'
++#' Without truncation, the likelihood contributions are as follows.
+ #' If `f` and `P` are the conditional finite-tree density and probability,
+ #' exact events contribute `q_0 * f(t)`, finite intervals contribute
+ #' `q_0 * P(L < T <= R)`, and right censoring at `C < tau` contributes
+@@ -50,8 +68,11 @@
+ #'   one including the tail. `Test_seq`, `Survival_Probs`, and `Density` contain
+ #'   grid predictions. `tau` is `NA` for bounded support. Body and tail masses
+ #'   are included in the existing node arrays without separate return fields.
++#'   `Allocations` includes both observed and ghost expected counts when
++#'   truncation is present, and its root value may exceed `nrow(X)`.
+ #'   `LogLik` and `LogLik_Trace` report observed
+-#'   log-likelihood (initialization and each EM step; empty trace without EM).
++#'   log-likelihood conditional on entry (initialization and each EM step;
++#'   empty trace without EM).
+ #'   `EM_Iterations` counts updates; `Converged` indicates whether terminal-mass
+ #'   tolerance was reached, and is `FALSE` when no updates were run.
+ #' @export
+@@ -59,13 +80,22 @@
+ #' @examples
+ #' data <- data_ic(seed = 123, n = 100, K = 1, Lambda = 0.1, q = 0.3)
+ #' out <- survPT(X = data)
+-survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE) {
++survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE, entry = 0) {
+     X = as.matrix(X)
+     # The first column and second column of X are the observed left bound and right bound, respectively.
+     if (!is.numeric(X) || nrow(X) == 0 || ncol(X) < 2 ||
+         anyNA(X[, 1:2]) || any(!is.finite(X[, 1])) || any(X[,2] < X[,1])) {
+         stop("Invalid input data X.")
+     }
++    if (!is.numeric(entry) || !is.null(dim(entry)) ||
++        !(length(entry) %in% c(1L, nrow(X))) ||
++        any(!is.finite(entry)) || any(entry < 0)) {
++        stop("entry must be a nonnegative finite scalar or a vector of length nrow(X).")
++    }
++    entry = rep_len(entry, nrow(X))
++    if (any(entry >= X[, 2])) {
++        stop("Each right endpoint or exact event time must be strictly greater than entry.")
++    }
+     if (! is.numeric(prior) || length(prior) != 1 || is.na(prior) || prior %in% c(1, 2, 3) == FALSE){
+         stop("Invalid input prior.")
+     }
+@@ -86,7 +116,7 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
+             stop("Tree depth and iteration limits must be nonnegative integers.")
+     }
+     if (is.null(test_seq)){
+-        endpoints = X[, 1:2]
++        endpoints = c(X[, 1:2], entry)
+         test_seq = seq(support[1], max(endpoints[is.finite(endpoints)]), length.out = 200)
+     }
+ 
+@@ -95,7 +125,7 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
+         prior_params = c(0.12, 1)  # Default values, not used for uniform prior
+     }
+ 
+-    out = SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose)
++    out = SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry)
+     out_PT = list("Left" = out$left_bound,
+                   "Right" = out$right_bound,
+                   "Level" = out$node_levels,
+diff --git a/R/RcppExports.R b/R/RcppExports.R
+index 8d95ac7..3764441 100644
+--- a/R/RcppExports.R
++++ b/R/RcppExports.R
+@@ -5,7 +5,7 @@ OPT_right <- function(X, delta, test_seq, Rho, support, max_M, max_iter, iter_to
+     .Call(`_SurvPT_OPT_right`, X, delta, test_seq, Rho, support, max_M, max_iter, iter_tol, verbose)
+ }
+ 
+-SurvPT <- function(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose) {
+-    .Call(`_SurvPT_SurvPT`, X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose)
++SurvPT <- function(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry = NULL) {
++    .Call(`_SurvPT_SurvPT`, X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry)
+ }
+ 
+diff --git a/R/native-interface.R b/R/native-interface.R
+index 75427bc..fd937a7 100644
+--- a/R/native-interface.R
++++ b/R/native-interface.R
+@@ -3,12 +3,12 @@
+ #' Direct Rcpp entry point for the PT implementation. Most users should call
+ #' \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
+ #' terminal-node indices to R indexing. This interface is retained for
+-#' compatibility and requires all arguments explicitly.
++#' compatibility. All arguments except `entry` are required explicitly.
+ #'
+ #' @name SurvPT-native
+ #' @aliases SurvPT
+ #' @usage SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
+-#'   max_EM_iter, EM_tol, verbose)
++#'   max_EM_iter, EM_tol, verbose, entry = NULL)
+ #' @param X Numeric matrix with left and right endpoints in its first two
+ #'   columns; see \code{\link{survPT}()} for supported observation encodings.
+ #' @param test_seq Numeric evaluation points.
+@@ -22,6 +22,9 @@
+ #' @param max_EM_iter Nonnegative integer maximum number of EM updates.
+ #' @param EM_tol Nonnegative tolerance for terminal-mass changes.
+ #' @param verbose Logical progress-output flag.
++#' @param entry Optional nonnegative finite scalar or vector of entry times.
++#'   `NULL` supplies zeros. Positive truncation within the support requires
++#'   `allocated = 1`; see \code{\link{survPT}()}.
+ #' @details
+ #' Pass a numeric matrix as `X` and numeric vectors for vector arguments.
+ #' For a uniform base, pass a numeric placeholder such as `c(0.12, 1)` for
+diff --git a/README.md b/README.md
+index 212b937..13cbd5b 100644
+--- a/README.md
++++ b/README.md
+@@ -60,6 +60,23 @@ sum(fit$Posterior_Probs[fit$Terminal_Nodes])  # approximately 1
+ 
+ With infinite upper support, the tree first separates a finite body ending at `fit$tau` from an unresolved tail. The first-layer probability uses an internal `Beta(0.5, 0.5)` prior and is updated in every EM iteration using the existing PT mode-style rule. No additional argument or separate body/tail probability fields are needed; these masses are part of the existing node arrays. Survival at `tau` equals the tail mass; finite evaluation times beyond `tau` return `NA` because the tail shape is unspecified. This replaces the former uniform cutoff at 1.1 times the largest endpoint.
+ 
++For independent left truncation (delayed entry), pass each subject's entry time
++separately from the observation endpoints:
++
++```r
++x <- rbind(c(1, 1), c(1, 3), c(2, Inf))
++fit <- survPT(x, entry = c(0.2, 1.5, 1), verbose = FALSE)
++```
++
++`entry` may also be a scalar shared by all subjects. Exact event times and right
++endpoints must exceed entry; interval lower bounds are intersected with entry.
++Initialization and each E-step add `P(A intersect (0, entry]) / S(entry)` to the
++observed allocation for node `A`, keeping the existing branch update formula.
++`Allocations` includes these ghost counts, so its root can exceed the observed
++sample size. `LogLik` and its trace include the `-log(S(entry))` adjustment.
++Positive truncation within the support requires `allocated = 1`. Omitting
++`entry`, passing `entry = 0`, or passing a vector of zeros gives the same fit.
++
+ A runnable example covering all three PT bases is in [Examples/quickstart.R](Examples/quickstart.R). Simulation and data-analysis scripts, their dependencies, and validation commands are described in [Examples/README.md](Examples/README.md).
+ 
+ ## Documentation
+diff --git a/man/SurvPT-native.Rd b/man/SurvPT-native.Rd
+index e81a86a..4ca7317 100644
+--- a/man/SurvPT-native.Rd
++++ b/man/SurvPT-native.Rd
+@@ -6,7 +6,7 @@
+ \title{Low-level native finite Polya tree interface}
+ \usage{
+ SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
+-  max_EM_iter, EM_tol, verbose)
++  max_EM_iter, EM_tol, verbose, entry = NULL)
+ }
+ \arguments{
+ \item{X}{Numeric matrix with left and right endpoints in its first two
+@@ -31,6 +31,10 @@ the added body/tail split when upper support is infinite.}
+ \item{EM_tol}{Nonnegative tolerance for terminal-mass changes.}
+ 
+ \item{verbose}{Logical progress-output flag.}
++
++\item{entry}{Optional nonnegative finite scalar or vector of entry times.
++`NULL` supplies zeros. Positive truncation within the support requires
++`allocated = 1`; see \code{\link{survPT}()}.}
+ }
+ \value{
+ A list with native names: `left_bound`, `right_bound`, `node_levels`,
+@@ -46,7 +50,7 @@ A list with native names: `left_bound`, `right_bound`, `node_levels`,
+ Direct Rcpp entry point for the PT implementation. Most users should call
+ \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
+ terminal-node indices to R indexing. This interface is retained for
+-compatibility and requires all arguments explicitly.
++compatibility. All arguments except `entry` are required explicitly.
+ }
+ \details{
+ Pass a numeric matrix as `X` and numeric vectors for vector arguments.
+diff --git a/man/survPT.Rd b/man/survPT.Rd
+index ffeb858..b309f59 100644
+--- a/man/survPT.Rd
++++ b/man/survPT.Rd
+@@ -14,7 +14,8 @@ survPT(
+   allocated = 1,
+   max_EM_iter = 100,
+   EM_tol = 1e-06,
+-  verbose = TRUE
++  verbose = TRUE,
++  entry = 0
+ )
+ }
+ \arguments{
+@@ -23,7 +24,7 @@ right observation endpoints. Use equal endpoints for exact events and
+ a right endpoint of `Inf` for right censoring. Additional columns are ignored.}
+ 
+ \item{test_seq}{Evaluation grid; by default, 200 points from the lower
+-support bound to the largest finite observed endpoint, including censoring times.}
++support bound to the largest finite endpoint or entry time.}
+ 
+ \item{prior}{Prior type, (1: Uniform, 2: Exponential, 3: Weibull)}
+ 
+@@ -45,6 +46,11 @@ initialization without EM.}
+ \item{EM_tol}{Tolerance for EM convergence}
+ 
+ \item{verbose}{Logical, whether to print progress messages}
++
++\item{entry}{Nonnegative finite entry (left-truncation) times, either one
++value for all rows or a vector of length `nrow(X)`. Defaults to `0` (no
++truncation). Each event must occur strictly after entry. Positive truncation
++within the support requires `allocated = 1`.}
+ }
+ \value{
+ A list containing `Left`, `Right`, `Level`, `Allocations`,
+@@ -52,8 +58,11 @@ A list containing `Left`, `Right`, `Level`, `Allocations`,
+   one including the tail. `Test_seq`, `Survival_Probs`, and `Density` contain
+   grid predictions. `tau` is `NA` for bounded support. Body and tail masses
+   are included in the existing node arrays without separate return fields.
++  `Allocations` includes both observed and ghost expected counts when
++  truncation is present, and its root value may exceed `nrow(X)`.
+   `LogLik` and `LogLik_Trace` report observed
+-  log-likelihood (initialization and each EM step; empty trace without EM).
++  log-likelihood conditional on entry (initialization and each EM step;
++  empty trace without EM).
+   `EM_Iterations` counts updates; `Converged` indicates whether terminal-mass
+   tolerance was reached, and is `FALSE` when no updates were run.
+ }
+@@ -61,19 +70,33 @@ A list containing `Left`, `Right`, `Level`, `Allocations`,
+ Fit a finite Polya tree with a Beta-prior tail split
+ }
+ \details{
+-With infinite upper support, `tau` is the largest finite observed endpoint.
++With infinite upper support, `tau` is the largest finite endpoint after
++intersecting observation intervals with `(entry, Inf)`.
+ A new root separates the finite subtree from an unresolved `[tau, Inf)`
+ tail. Its left probability has the internal first-level prior
+ `q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
+ Initial censored allocations use the Beta prior mean `0.5` and the
+ selected base conditioned on the finite body. The first layer then uses
+ the same clipped mode-style update as other PT branches, at initialization
+-and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n - 1))`,
++and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n_total - 1))`,
+ with a one-half fallback when the denominator is nonpositive or tiny.
+ This is not a posterior-mean update; the fallback need not be an exact MAP
+ for Beta shapes below one. Internal PT alpha values retain their original
+ finite-subtree depths. No separate scalar MLE is performed.
+ 
++Under independent left truncation and noninformative censoring, interval
++contributions are `P(max(L, entry) < T <= R) / S(entry)`; exact events
++contribute `f(t) / S(entry)`. Initial allocations and each E-step include
++the ghost count `P(A intersect (0, entry]) / S(entry)` for every node `A`,
++in addition to observed-subject allocations. Initial ghost counts use the
++same conditional base and body/tail prior mean as observed allocations.
++The root count `n_total` is the sum of `1 / S(entry)` under the distribution
++used for that allocation step; it replaces the sample size in the branch
++update denominator. The retained tree is fixed throughout EM.
++Entry times at or below the lower support bound have no truncation effect.
++All-zero `entry` uses the original calculations, including initialization.
++
++Without truncation, the likelihood contributions are as follows.
+ If `f` and `P` are the conditional finite-tree density and probability,
+ exact events contribute `q_0 * f(t)`, finite intervals contribute
+ `q_0 * P(L < T <= R)`, and right censoring at `C < tau` contributes
+diff --git a/src/PT.cpp b/src/PT.cpp
+index 424df40..72899f7 100644
+--- a/src/PT.cpp
++++ b/src/PT.cpp
+@@ -12,8 +12,8 @@ using namespace std;
+ 
+ 
+ // constructor
+-PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
+-    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
++PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const vec entry) :
++    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose), entry(entry) {
+ 
+     n = X.n_rows;
+     if (n == 0 || X.n_cols < 2 || support.n_elem != 2 ||
+@@ -27,11 +27,20 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
+                        !prior_params.is_finite() || arma::any(prior_params <= 0))))
+         Rcpp::stop("Invalid base distribution parameters.");
+     has_tail = !arma::is_finite(support(1));
++    if (entry.n_elem != X.n_rows || !entry.is_finite() || arma::any(entry < 0))
++        Rcpp::stop("entry must contain one nonnegative finite time per observation.");
++    has_truncation = arma::any(entry > support(0));
++    if (has_truncation && allocated != 1)
++        Rcpp::stop("Left truncation requires allocated = 1.");
+     for (int i = 0; i < n; ++i) {
+         if (!arma::is_finite(X(i, 0)) || std::isnan(X(i, 1)) ||
+             X(i, 0) < support(0) || X(i, 1) < X(i, 0) || X(i, 1) > support(1) ||
+             (X(i, 0) == X(i, 1) && X(i, 0) == support(0)))
+             Rcpp::stop("Invalid observation endpoints within support.");
++        if (entry(i) >= X(i, 1))
++            Rcpp::stop("Each right endpoint or exact event time must be strictly greater than entry.");
++        if (has_truncation && X(i, 0) != X(i, 1))
++            this->X(i, 0) = max(X(i, 0), entry(i));
+     }
+     if (max_M <= 10){
+         NODES_NUM = (1 << (max_M + 1)) - 1; // number of nodes for complete tree
+@@ -43,7 +52,7 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
+     largest_obs = -LARGE_VALUE;
+     for (uword i = 0; i < X.n_rows; ++i) {
+         for (uword j = 0; j < 2; ++j) {
+-            const double v = X(i, j);
++            const double v = this->X(i, j);
+             if (arma::is_finite(v) && v > largest_obs) {
+                 largest_obs = v;
+             }
+@@ -78,6 +87,10 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
+ 
+     n_obs_allocated = vec(NODES_NUM, fill::zeros);
+     n_obs_allocated(0) = n; // all observations start at the root
++    if (has_truncation) {
++        for (int obs = 0; obs < n; ++obs)
++            n_obs_allocated(0) += initial_truncation_allocation(obs, support(0), support(1));
++    }
+ 
+     posterior_probs = vec(NODES_NUM, fill::zeros);
+     posterior_probs(0) = 1.0; // root node starts with probability 1
+@@ -276,6 +289,16 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
+             Rcpp::stop("Invalid allocation type.");
+         }
+     }
++    // Ghosts are allocated independently of observed-interval membership.
++    // Include them before applying the initialization/early-stopping rule.
++    if (has_truncation) {
++        for (int obs = 0; obs < n; ++obs) {
++            n_obs_allocated(left_child) += initial_truncation_allocation(
++                obs, left_bound(left_child), right_bound(left_child));
++            n_obs_allocated(right_child) += initial_truncation_allocation(
++                obs, left_bound(right_child), right_bound(right_child));
++        }
++    }
+     if (allocated == 1){
+     // check for sum of allocations
+         if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
+@@ -301,6 +324,22 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double
+     return denominator > SMALL_VALUE ? numerator / denominator : 0.0;
+ }
+ 
++double PT::initial_truncation_allocation(int obs, double left, double right) const {
++    if (entry(obs) <= support(0)) return 0.0;
++    const double body_right = has_tail ? largest_obs : support(1);
++    const double body_weight = has_tail ? 0.5 : 1.0;
++    const double survival = body_weight * terminal_probability(
++        entry(obs), arma::datum::inf, support(0), body_right) +
++        (has_tail ? 1.0 - body_weight : 0.0);
++    if (!arma::is_finite(survival) || survival <= 0.0)
++        Rcpp::stop("Entry survival probability must be positive at initialization.");
++    const double count = body_weight * terminal_probability(
++        left, min(right, entry(obs)), support(0), body_right) / survival;
++    if (!arma::is_finite(count))
++        Rcpp::stop("Left-truncation expected count overflow at initialization.");
++    return count;
++}
++
+ 
+ void PT::EM_step() {
+     bool condition = true;
+@@ -370,6 +409,10 @@ void PT::prepare_observation_cache() {
+     // The partition, observation intervals and base parameters stay fixed in EM.
+     // Store only nonzero kernels, rather than a dense observations-by-leaves matrix.
+     observation_kernels.resize(n);
++    if (has_truncation) {
++        truncation_kernels.resize(n);
++        entry_survival_kernels.resize(n);
++    }
+     for (int obs = 0; obs < n; ++obs) {
+         const double left = X(obs, 0), right = X(obs, 1);
+         for (uword j = 0; j < terminal_nodes.n_elem; ++j) {
+@@ -380,9 +423,47 @@ void PT::prepare_observation_cache() {
+                 terminal_probability(left, right, left_bound(node), right_bound(node));
+             if (kernel != 0.0) observation_kernels[obs].emplace_back(node, kernel);
+         }
++        if (has_truncation && entry(obs) > support(0)) {
++            for (uword j = 0; j < terminal_nodes.n_elem; ++j) {
++                const int node = static_cast<int>(terminal_nodes(j));
++                const double below = terminal_probability(support(0), entry(obs),
++                    left_bound(node), right_bound(node));
++                const double above = terminal_probability(entry(obs), arma::datum::inf,
++                    left_bound(node), right_bound(node));
++                if (below != 0.0) truncation_kernels[obs].emplace_back(node, below);
++                if (above != 0.0) entry_survival_kernels[obs].emplace_back(node, above);
++            }
++        }
+     }
+ }
+ 
++double PT::entry_survival(int obs) const {
++    if (entry(obs) <= support(0)) return 1.0;
++    // Integrate above entry directly to avoid cancellation in 1 - F(entry).
++    double survival = 0.0;
++    for (const auto& kernel : entry_survival_kernels[obs])
++        survival += posterior_probs(kernel.first) * kernel.second;
++    return survival;
++}
++
++void PT::add_truncation_allocations() {
++    vec ghost_counts(nodes_used + 1, fill::zeros);
++    for (int obs = 0; obs < n; ++obs) {
++        if (entry(obs) <= support(0)) continue;
++        const double survival = entry_survival(obs);
++        if (!arma::is_finite(survival) || survival <= 0.0)
++            Rcpp::stop("Entry survival probability must be positive during EM.");
++        ghost_counts.zeros();
++        for (const auto& kernel : truncation_kernels[obs])
++            ghost_counts(kernel.first) = posterior_probs(kernel.first) * kernel.second / survival;
++        for (int node = nodes_used; node > 0; --node)
++            ghost_counts(static_cast<int>(parent_nodes(node))) += ghost_counts(node);
++        n_obs_allocated.head(nodes_used + 1) += ghost_counts;
++    }
++    if (!n_obs_allocated.is_finite())
++        Rcpp::stop("Left-truncation expected count overflow during EM.");
++}
++
+ void PT::update_expected_allocations() {
+     n_obs_allocated.zeros();
+     n_obs_allocated(0) = n;
+@@ -418,6 +499,7 @@ void PT::update_expected_allocations() {
+             }
+         }
+     }
++    if (has_truncation) add_truncation_allocations();
+ }
+ 
+ void PT::update_tree_size() {
+@@ -508,6 +590,11 @@ double PT::log_likelihood() const {
+             probability += posterior_probs(entry.first) * entry.second;
+         if (probability <= 0.0) return -arma::datum::inf;
+         value += log(probability);
++        if (has_truncation) {
++            const double survival = entry_survival(obs);
++            if (!arma::is_finite(survival) || survival <= 0.0) return -arma::datum::inf;
++            value -= log(survival);
++        }
+     }
+     return value;
+ }
+diff --git a/src/PT.h b/src/PT.h
+index f95a928..929a1a3 100644
+--- a/src/PT.h
++++ b/src/PT.h
+@@ -28,7 +28,7 @@ public:
+     bool verbose; // print log info if true
+ 
+     // constructor
+-    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
++    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const vec entry);
+ 
+     // functions
+     void init(); // initialize the first tree structure
+@@ -44,10 +44,17 @@ public:
+ 
+ private:
+     bool has_tail; // an unresolved tail is the right child (index 2) of the root
++    vec entry;
++    bool has_truncation;
++    double initial_truncation_allocation(int obs, double left, double right) const;
+     void prepare_observation_cache();
+     void update_expected_allocations();
++    void add_truncation_allocations();
++    double entry_survival(int obs) const;
+     // Nonzero (leaf index, conditional observation probability/density) entries.
+     std::vector<std::vector<std::pair<int, double>>> observation_kernels;
++    std::vector<std::vector<std::pair<int, double>>> truncation_kernels;
++    std::vector<std::vector<std::pair<int, double>>> entry_survival_kernels;
+     std::vector<std::pair<int, int>> child_nodes;
+     double log_likelihood() const;
+     vec loglik_trace;
+diff --git a/src/RcppExports.cpp b/src/RcppExports.cpp
+index c183cbb..4af08c0 100644
+--- a/src/RcppExports.cpp
++++ b/src/RcppExports.cpp
+@@ -31,8 +31,8 @@ BEGIN_RCPP
+ END_RCPP
+ }
+ // SurvPT
+-List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
+-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP) {
++List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, Rcpp::Nullable<Rcpp::NumericVector> entry);
++RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP entrySEXP) {
+ BEGIN_RCPP
+     Rcpp::RObject rcpp_result_gen;
+     Rcpp::RNGScope rcpp_rngScope_gen;
+@@ -46,14 +46,15 @@ BEGIN_RCPP
+     Rcpp::traits::input_parameter< const int >::type max_EM_iter(max_EM_iterSEXP);
+     Rcpp::traits::input_parameter< const double >::type EM_tol(EM_tolSEXP);
+     Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
+-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose));
++    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type entry(entrySEXP);
++    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry));
+     return rcpp_result_gen;
+ END_RCPP
+ }
+ 
+ static const R_CallMethodDef CallEntries[] = {
+     {"_SurvPT_OPT_right", (DL_FUNC) &_SurvPT_OPT_right, 9},
+-    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 10},
++    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 11},
+     {NULL, NULL, 0}
+ };
+ 
+diff --git a/src/main.cpp b/src/main.cpp
+index 5236cf9..79a8868 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -16,10 +16,17 @@ List SurvPT(const arma::mat X, //Data (n by d matrix)
+             const int allocated, //0: not allocated (MW) method, 1: allocated (PT) method
+             const int max_EM_iter, //Maximum number of EM iterations
+             const double EM_tol, //Tolerance for EM convergence
+-            const bool verbose //Verbose output
++            const bool verbose, //Verbose output
++            Rcpp::Nullable<Rcpp::NumericVector> entry = R_NilValue //Left-truncation times
+ ){
++    arma::vec entry_times(X.n_rows, arma::fill::zeros);
++    if (entry.isNotNull()) {
++        const arma::vec supplied = Rcpp::as<arma::vec>(entry.get());
++        if (supplied.n_elem == 1) entry_times.fill(supplied(0));
++        else entry_times = supplied;
++    }
+     //Initialize the class object
+-    PT my_tree(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose);
++    PT my_tree(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry_times);
+ 
+     if (allocated == 1){
+         my_tree.EM_step();
+diff --git a/tests/pt-tail-root.R b/tests/pt-tail-root.R
+index 2ac0472..32110ce 100644
+--- a/tests/pt-tail-root.R
++++ b/tests/pt-tail-root.R
+@@ -144,7 +144,9 @@ native <- SurvPT(mixed, c(0, 3), 1, c(0, Inf), 0L, c(0.12, 1),
+                  1L, 1L, 1e-10, FALSE)
+ near(as.numeric(native$alpha[2:3]), c(0.5, 0.5))
+ near(as.numeric(native$posterior_probs[2]), body_mass(after))
+-stopifnot(length(formals(survPT)) == 10L, length(formals(SurvPT)) == 10L,
++stopifnot(length(formals(survPT)) == 11L, length(formals(SurvPT)) == 11L,
++          identical(tail(names(formals(survPT)), 1), "entry"),
++          identical(tail(names(formals(SurvPT)), 1), "entry"),
+           !any(c("q_0", "theta_0", "p_tail", "q0_prior") %in% names(after)),
+           !any(c("q_0", "theta_0", "p_tail", "q0_prior") %in% names(native)))
+ 
+@@ -153,4 +155,4 @@ known <- fit_tail(simple, depth = 0, iterations = 3)
+ mode <- optimize(function(q) dbeta(q, 0.5+2, 0.5+1, log = TRUE),
+                  c(0, 1), maximum = TRUE, tol = 1e-12)$maximum
+ near(body_mass(known), mode)
+-cat("Tail-root Beta initialization, EM updates, likelihood and boundary tests passed.\n")
+\ No newline at end of file
++cat("Tail-root Beta initialization, EM updates, likelihood and boundary tests passed.\n")

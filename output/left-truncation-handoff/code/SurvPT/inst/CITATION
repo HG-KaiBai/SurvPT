@@ -1,0 +1,10 @@
+citHeader("Cite the version of SurvPT used in your analysis.")
+
+bibentry(
+  bibtype = "Manual",
+  title = "SurvPT: Survival Estimation with Finite Polya Trees",
+  author = c(person("Yixing", "Zhao"), person("Liqun", "Diao")),
+  year = "2026",
+  note = "R package version 0.3.0.",
+  url = "https://github.com/HG-KaiBai/SurvPT"
+)

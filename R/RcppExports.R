@@ -5,7 +5,7 @@ OPT_right <- function(X, delta, test_seq, Rho, support, max_M, max_iter, iter_to
     .Call(`_SurvPT_OPT_right`, X, delta, test_seq, Rho, support, max_M, max_iter, iter_tol, verbose)
 }
 
-SurvPT <- function(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose) {
-    .Call(`_SurvPT_SurvPT`, X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose)
+SurvPT <- function(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry = NULL) {
+    .Call(`_SurvPT_SurvPT`, X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry)
 }
 

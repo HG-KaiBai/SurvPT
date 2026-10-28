@@ -1,0 +1,155 @@
+SurvPT left truncation：方法、实现和测试交接
+快照日期：2026-10-27
+
+一、用户目标与当前状态
+
+用户希望在 SurvPT 中支持 independent left truncation，通过修改 allocated expected count 保留节点更新的共轭形式，并保证所有 a_i = 0 时完整退回原算法。随后要求仿照 Examples/test_function.R，新建 test_ltrunc.R，生成 single dataset，并与 Waller et al. (2026) 的方法比较 survival function。
+
+上述代码、单数据集示例和验证已经完成。当前交接是把方法与逻辑带到应用中名为 Overleaf 的项目下的新聊天。用户没有要求上传 Overleaf 网站或打开内置 LaTeX 编辑器。原始论文尚未由这次代码任务修改。
+
+主代码库：C:/Users/yixing/Downloads/SurvPT
+论文：C:/Users/yixing/Downloads/Overleaf/EMPT/main_yz.tex
+改动前 Git HEAD：9d155c5160ba824a5121ff9322c263168879de42
+原始聊天标题：控制 left truncation 的 allocated count
+原始聊天 ID：01a17ff5-ee0b-72e1-9ce4-316dc959538c
+
+二、观测似然
+
+设 T 为事件时间，a_i 为入组时间，保留条件 T_i > a_i。假设源总体中 T 与 entry 独立，且删失/检查机制可忽略。令 S(t)=P(T>t)。对区间观测 (L_i,R_i]，使用有效区间
+
+  I_i^+ = (max(L_i,a_i), R_i]。
+
+其条件似然贡献为 P(I_i^+)/S(a_i)；exact event t_i 的贡献为 f(t_i)/S(a_i)。R_i=Inf 即右删失。必须有 R_i>a_i，exact event 也必须严格晚于 entry。没有要求拟合 entry 的分布。
+
+仅裁剪 L_i 为 max(L_i,a_i) 还不够，因为 -log S(a_i) 会耦合树节点，原有 observed allocation 不能单独提供正确的截断校正。
+
+三、ghost augmentation 和 allocated expected count
+
+对每个保留个体，引入在一次成功接受 T>a_i 之前的 K_i 个虚拟拒绝事件：
+
+  Pr(K_i=m | a_i, Theta) = S_Theta(a_i) F_Theta(a_i)^m, m=0,1,...
+  E(K_i | a_i, Theta) = F_Theta(a_i)/S_Theta(a_i)。
+
+拒绝事件 Z_ij 条件分布为 P_Theta(. | T<=a_i)。将拒绝事件积分并对 m 求和，得到 P_Theta(I_i^+) sum_m F_Theta(a_i)^m = P_Theta(I_i^+)/S_Theta(a_i)。exact event 把 P(I_i^+) 换成 f(t_i)。这个构造保留原条件似然，不需要观测被截掉的真实人数。
+
+在迭代 k，对任意树节点 A：
+
+  Ntilde_A^(k) = sum_i [w_iA^(k) + g_iA^(k)]，
+  w_iA^(k) = P_k(A intersect I_i^+)/P_k(I_i^+)（区间观测），
+  w_iA^(k) = 1(t_i in A)（exact event），
+  g_iA^(k) = P_k(A intersect (0,a_i])/S_k(a_i)。
+
+代码允许非零 lower support s0；此时把 (0,a_i] 换成 support 内的区间。a_i<=s0 没有截断效应。
+
+ghost 分配必须对所有 retained observations 添加，包括 exact events，且不能受原 observed-interval membership 的筛选限制。节点 A 可以完全不与 I_i^+ 相交，却仍可能收到 ghost count。
+
+根节点的总数不再是 n，而是：
+
+  Ntilde_root^(k) = n + sum_i F_k(a_i)/S_k(a_i)
+                  = sum_i 1/S_k(a_i)。
+
+兄弟节点 counts 相加等于父节点 count。这个量是辅助模型下的期望总数，不应直接称为估计的实际招募总体人数。
+
+四、保留的 Beta 形式和实际 M-step
+
+对于父节点的左右子节点 A、A'，分支概率 theta_A 的先验为 Beta(alpha_A,alpha_A')。增广 complete-data 的 conditional posterior 是 Beta(alpha_A+N_A,alpha_A'+N_A')。以 expected counts 构造的 Q 函数为：
+
+  Q(Theta | Theta_k) = sum_pairs [
+    (alpha_A + Ntilde_A^(k) - 1) log(theta_A)
+    + (alpha_A' + Ntilde_A'^(k) - 1) log(1-theta_A)
+  ] + constant。
+
+两侧 shape 都大于 1 时，精确的内部 MAP 更新为：
+
+  theta_A = (alpha_A + Ntilde_A - 1) /
+            (alpha_A + alpha_A' + Ntilde_A + Ntilde_A' - 2)。
+
+代码为保持原算法兼容，保留旧的 boundary rule：令分母 D 为上式分母；D>1e-300 时把比例 clip 到 [0,1]，否则 theta_A=0.5。这是 mode-style update，不是 posterior mean。当 shape<=1 时，尤其 D<=0 的 0.5 fallback，不一定最大化 Q。因此不能宣称当前实现满足一般的精确 MAP-EM 单调收敛保证。若今后要严格对接论文在 [epsilon,1-epsilon] 上的理论，需要另行实现真正的约束 argmax，并单独讨论与旧输出兼容性的冲突。
+
+观测后验在边际上并不是各节点独立 Beta 的乘积；准确表述是增广 complete-data conjugacy，以及用期望计数构造 Q 后仍保留相同的节点代数形式。把 expected counts 填入 Beta 并不自动给出精确的 observed-data Bayesian posterior。
+
+五、代码执行逻辑
+
+1. R/PT.R: survPT(..., entry=0)，新参数放在末尾；接受非负有限 scalar 或长度 n 的 vector。保持原位置参数兼容。
+2. R/native-interface.R 和 Rcpp wrappers: native R 接口 SurvPT(..., entry=NULL) 仍可用旧的 10 个参数调用；内部原生调用已增加 entry。
+3. src/main.cpp、src/PT.h、src/PT.cpp: 校验 entry，裁剪非 exact 区间。support 内有正截断时要求 allocated=1。
+4. 初始化：用原初始基分布计算 observed counts 和 ghost counts；无界支持先以 body/tail 先验均值各 0.5 计算分配。必须在 early stopping 判断之前添加 ghosts。树由该初始化决定，在 EM 中固定。
+5. prepare_observation_cache: 固定树与基参数后缓存 observation kernels、entry 以下 kernels、entry 以上 kernels。S(entry) 直接积分 entry 以上质量，避免用 1-F(entry) 的抵消误差。
+6. update_expected_allocations / add_truncation_allocations: 每次 E-step 全部用上一轮的质量计算 observed+ghost counts；leaf counts 向父节点汇总。
+7. re_allocation: 把新的总 counts 代入原分支更新规则；body/tail split 也用同样的 counts。
+8. log_likelihood: 每条记录扣除 log S(entry)。LogLik 和 LogLik_Trace 均为 conditional observed log likelihood，不含 prior 项。
+9. 停止条件仍是 terminal masses 的 L2 变化 <= EM_tol。Allocations 返回 observed+ghost counts，根节点可大于 n。
+10. 无界支持仍保留 unresolved tail。tau 是有效观测区间的最大有限端点；entry 可以通过裁剪扩大 tau。S(tau)=p_tail；tau 之后的有限 t 不确定 tail shape，返回 NA。
+
+六、a_i=0 为什么退回原算法
+
+在原模型的非负连续支持下，F(0)=0、S(0)=1：ghost counts 全部为 0，区间不变，条件似然等于原似然，根 count=n。代码通过 has_truncation=false 跳过额外运算，保留原初始化和浮点计算路径。
+
+已经用改动前版本保存的 160 个 fit，对以下三个变体逐一比较：省略 entry、entry=0、entry=rep(0,n)。160 x 3 的每个完整结果都通过 R identical()，包括节点数组、survival、loglik trace、迭代数和 convergence flag。这是与旧版的回归比较，不只是新实现内部两次调用相等。
+
+验证覆盖：3 种 base、bounded/unbounded support、深度 0/3/6、不同迭代数及 allocated 模式，另含 exact/right-censored/单条记录和正 lower support 边界。
+
+七、已完成的测试
+
+tests/pt-left-truncation.R：18 个有截断配置（3 bases x 2 supports x 3 depths），独立 R 积分检查初始化、E-step counts、现行 M-step、conditional likelihood、root/child count conservation、leaf mass、scalar/vector entry、native/public API、非法输入及 entry 定义 tau。
+
+tests/pt-tail-root.R 和 tests/pt-conditional-base.R：已通过。更新后的 Rd 文档语法检查与 git diff --check 已通过。
+
+code/SurvPT/ 为这次源代码快照，包含新增测试和 test_ltrunc.R。changes.patch 只包含 git tracked 文件的改动；新增文件已包括在源代码快照中。verification/ 内含旧版 160 个 fit 与可移植比较脚本。该快照不包含编译产物或用户的 R 会话文件。
+
+八、single dataset 的生成与对照
+
+文献：Waller, Marshall, Kee and Lamrock (2026), Statistics and Computing 36:230。
+https://doi.org/10.1007/s11222-026-10984-9
+作者实现：https://github.com/ZacharyWaller/ltic
+使用 commit 33ccd31a5920f29d65ced2b6c840a405ce07b9f7，版本 0.0.0.9000。
+
+Examples/test_ltrunc.R 按论文 Section 5.1 的连续生成设计：T~Exp(1)，entry~U(0,0.6)，第一次检查 V~U(0,4)，第二次 V+0.5；保留 T>entry。检查时间与事件、entry 独立。源样本量按期望 retained n=500 计算为 665。seed=123 实际保留 500 人（24.8% 截断），324 left-censored、67 interval-censored、109 right-censored。latent T 只用于生成/筛选，不提供给拟合器。
+
+重要来源差异：论文文字为 U(0,4)，作者仓库的 simulation.R 使用 U(0,2)。本例采用论文的 4，并在脚本中公开说明差异，没有混用或声称逐行复现作者模拟。
+
+SurvPT 使用 uniform 和 exponential bases，max_M=8、max_EM_iter=2000、EM_tol=1e-8。exponential rate=0.899369，用包含 entry correction 的区间条件似然估计；现有 estimate_exp 不校正 entry，不能直接用于这里。
+
+作者 PL-ICM 和 Product-Limit 通过 ltic::ltic_np 拟合相同的 500 行，open_T=TRUE（与 T>entry 一致），tol=1e-5、max_it=100000。作者默认是 closed entry；连续生成下 equality 概率为零。ltic 的 res$conv 是 score diagnostic，不是 TRUE/FALSE convergence flag。
+
+九、实际结果（一个数据集）
+
+方法                  logLik      iterations   seconds   raw grid RMSE   conditional grid RMSE
+SurvPT uniform       -322.072939      163          2.41       0.061037           0.021615
+SurvPT exponential   -322.673482      450          6.92       0.069873           0.014475
+NPMLE PL-ICM         -306.693368       99          0.06       0.342391           0.045691
+NPMLE Product-Limit  -306.703281     2132          0.16       0.342391           0.045786
+
+四种拟合都达到了各自的 stopping condition；PL-ICM 返回的 steps 为每轮 10 PL + 1 ICM，所以 99 代表 9 个 outer loops，不应直接和 SurvPT 的 EM iterations 等同。
+
+在这一次数据中，作者 NPMLE 的早期累计风险发生很大的跳跃，原始 S(t) 在很早处接近零；保留原曲线，没有挑选新 seed。脚本同时给所有方法和 truth 绘制预先按设计指定的条件曲线 S(t)/S(0.6), t>=0.6。PL/PL-ICM 用 cutoff 后的 product/cumulative-hazard differences 稳定计算，避免两个近零量相除。论文 Section 7 讨论了相关早期下降/条件生存估计问题。
+
+图：results/ltrunc/survival_comparison.png 与 survival_conditional.png。
+数据/数值：observed_data.csv、survival_curves.csv、survival_conditional_curves.csv、fit_summary.csv、single_dataset.rds、sessionInfo.txt。
+
+RMSE 是一次数据集上固定 grid 的描述性误差，不是 Monte Carlo 性能结论。时间包含预处理，停止标准不同，SurvPT 由 devtools 编译；不构成严格的速度 benchmark。NPMLE 的更高 logLik 与 PT 的较小真值误差可以同时出现，因为目标函数和正则化不同。
+
+十、对应论文需要修改的逻辑
+
+main_yz.tex 的方法部分应先增加 entry 与 conditional likelihood，然后用 Ntilde_A 统一替换原 expected count 的定义，再解释增广共轭形式和初始化。不能只在代码接口增加 entry 或只裁剪观测区间。
+
+理论部分不能仅把 N 改名为 Ntilde：
+* penalized observed objective 需要减去 sum log S_Theta(a_i)；
+* 固定树的 EM 论证需要正确的增广 Q、S(entry)>0，以及真正的 M-step maximization 条件；
+* 根总数不再固定为 n，旧的 N_A/n 收敛结论需要重新审查；
+* 截断下的一致性、可识别性及 entry survival 的正性/可积性条件需要重新证明；
+* plug-in Beta distribution 与真实 observed posterior 应保持区别；
+* 当前代码的边界 fallback 不能直接冒充论文约束盒上的精确 argmax。
+
+这些理论扩展尚未在本代码任务中证明或合入原论文。新聊天可据本交接继续讨论/修改，但应以用户下一步明确要求为准。
+
+方法参考：Sun, Qin and Huang (2018), Statistical Science 33(2):261-276, “Missing Information Principle: A Unified Approach for General Truncated and Censored Survival Data Problems”，其 ghost/missing-information 思路可用于说明增广来源。
+https://doi.org/10.1214/17-STS638
+
+十一、复现入口
+
+从 code/SurvPT 安装更新后的包，然后在该目录运行 tests/*.R。单数据集示例 source("Examples/test_ltrunc.R") 依赖 devtools、Rcpp/RcppArmadillo，以及上述固定 commit 的 ltic；Windows 编译需要 Rtools。脚本开头写有安装依赖的命令，运行脚本本身不会自动安装。
+
+在任意目录运行 Rscript verification/compare-zero-entry.R 时，需要更新后的 SurvPT 已在 R library path 中；可用 R_LIBS 指定项目本地 library。脚本从自身位置读取 frozen baseline，重做 160 x 3 完整结果比较。
+
+压缩包供存档/转交，实际继续开发的主仓库仍是上方 SurvPT 路径；新聊天所在 Overleaf 项目可直接读取该完整路径。本交接没有授权自动发送到其他人或上传网站。

@@ -7,6 +7,7 @@ The research scripts below support simulation and data-analysis work. Some execu
 | File | Purpose | Requirements and execution notes |
 | --- | --- | --- |
 | `test_function.R` | Uniform/exponential PT, OPT, NPMLE, MPT, and TBP comparison and plotting | Run from the repository root; requires `devtools`, `interval`, `survival`, and `spBayesSurv` 1.1.9. Defines data, both PT fits, and a common grid through the largest finite endpoint; MPT/TBP use package-default MCMC. Fiducial calls are commented out. |
+| `test_ltrunc.R` | One simulated left-truncated, interval-censored dataset: uniform/exponential PT, PL/PL-ICM NPMLE, and true survival | Requires `devtools` and the authors' `ltic` package; installation commands are in the script. Uses the published Waller et al. Section 5.1 scheme, seed 123, and approximately 500 retained subjects. Saves a PNG, data, curves, fit diagnostics, and an RDS under `results/ltrunc/`; plots interactively when sourced in RStudio. |
 | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
 | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
 | `bootstrap.R` | Helpers used by bootstrap comparisons | Assumes SurvPT, `interval`, and `boot` functions are attached; helper is tailored to three evaluation times and three estimators |
@@ -33,5 +34,26 @@ Rscript tests/pt-conditional-base.R
 The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three root-only trees, and three exact-data configurations. They do not run the full simulation studies.
 
 ## Attribution
+
+`test_ltrunc.R` uses the data-generating scheme from Section 5.1 of Waller,
+Marshall, Kee, and Lamrock (2026), *A fast and stable algorithm for non-parametric
+maximum likelihood estimation of survival functions for left-truncated and
+interval-censored data*, [doi:10.1007/s11222-026-10984-9](https://doi.org/10.1007/s11222-026-10984-9).
+It calls the authors' [ltic package](https://github.com/ZacharyWaller/ltic) directly
+(tested revision `33ccd31a5920f29d65ced2b6c840a405ce07b9f7`). The first assessment
+uses `U(0, 4)` as stated in the article; the repository simulation uses `U(0, 2)`.
+The example sets `open_T = TRUE` to match SurvPT's strict event-after-entry
+convention; the authors' default is closed entry. The generator is continuous,
+so exact equality at entry has probability zero. The exponential PT base rate
+is fitted with the left-truncation likelihood. This is a single-dataset
+illustration, not a reproduction of the paper's repeated simulation study.
+It saves both unconditional curves and curves conditional on survival past the
+prespecified maximum entry time (`trunc_max`, default 0.6), applying the same
+conditioning to every estimator and the truth. The latter helps inspect the
+NPMLE's later shape when it has an early near-unit hazard, a boundary behavior
+discussed in the article. Neither the seed nor the dataset is replaced to avoid
+this behavior. `fit_summary.csv` records convergence, likelihood, iterations,
+elapsed time including preprocessing, and descriptive grid RMSE for both views;
+the PT and NPMLE stopping rules differ, so timings are not a controlled benchmark.
 
 The fiducial comparison code and scenario labels relate to Cui, Hannig, and Kosorok (2024), *A Unified Nonparametric Fiducial Approach to Interval-Censored Data*, JASA 119(547), 2230–2241, [doi:10.1080/01621459.2023.2252143](https://doi.org/10.1080/01621459.2023.2252143). Preserve this attribution when adapting the routines. The local versions are modified research code, not a verified reproduction of the published experiments. See [Citations](../docs/citations.md).

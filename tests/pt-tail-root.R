@@ -144,7 +144,9 @@ native <- SurvPT(mixed, c(0, 3), 1, c(0, Inf), 0L, c(0.12, 1),
                  1L, 1L, 1e-10, FALSE)
 near(as.numeric(native$alpha[2:3]), c(0.5, 0.5))
 near(as.numeric(native$posterior_probs[2]), body_mass(after))
-stopifnot(length(formals(survPT)) == 10L, length(formals(SurvPT)) == 10L,
+stopifnot(length(formals(survPT)) == 11L, length(formals(SurvPT)) == 11L,
+          identical(tail(names(formals(survPT)), 1), "entry"),
+          identical(tail(names(formals(SurvPT)), 1), "entry"),
           !any(c("q_0", "theta_0", "p_tail", "q0_prior") %in% names(after)),
           !any(c("q_0", "theta_0", "p_tail", "q0_prior") %in% names(native)))
 

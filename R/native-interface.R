@@ -3,12 +3,12 @@
 #' Direct Rcpp entry point for the PT implementation. Most users should call
 #' \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
 #' terminal-node indices to R indexing. This interface is retained for
-#' compatibility and requires all arguments explicitly.
+#' compatibility. All arguments except `entry` are required explicitly.
 #'
 #' @name SurvPT-native
 #' @aliases SurvPT
 #' @usage SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
-#'   max_EM_iter, EM_tol, verbose)
+#'   max_EM_iter, EM_tol, verbose, entry = NULL)
 #' @param X Numeric matrix with left and right endpoints in its first two
 #'   columns; see \code{\link{survPT}()} for supported observation encodings.
 #' @param test_seq Numeric evaluation points.
@@ -22,6 +22,9 @@
 #' @param max_EM_iter Nonnegative integer maximum number of EM updates.
 #' @param EM_tol Nonnegative tolerance for terminal-mass changes.
 #' @param verbose Logical progress-output flag.
+#' @param entry Optional nonnegative finite scalar or vector of entry times.
+#'   `NULL` supplies zeros. Positive truncation within the support requires
+#'   `allocated = 1`; see \code{\link{survPT}()}.
 #' @details
 #' Pass a numeric matrix as `X` and numeric vectors for vector arguments.
 #' For a uniform base, pass a numeric placeholder such as `c(0.12, 1)` for

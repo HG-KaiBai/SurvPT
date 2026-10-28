@@ -12,8 +12,8 @@ using namespace std;
 
 
 // constructor
-PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
-    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
+PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const vec entry) :
+    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose), entry(entry) {
 
     n = X.n_rows;
     if (n == 0 || X.n_cols < 2 || support.n_elem != 2 ||
@@ -27,11 +27,20 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
                        !prior_params.is_finite() || arma::any(prior_params <= 0))))
         Rcpp::stop("Invalid base distribution parameters.");
     has_tail = !arma::is_finite(support(1));
+    if (entry.n_elem != X.n_rows || !entry.is_finite() || arma::any(entry < 0))
+        Rcpp::stop("entry must contain one nonnegative finite time per observation.");
+    has_truncation = arma::any(entry > support(0));
+    if (has_truncation && allocated != 1)
+        Rcpp::stop("Left truncation requires allocated = 1.");
     for (int i = 0; i < n; ++i) {
         if (!arma::is_finite(X(i, 0)) || std::isnan(X(i, 1)) ||
             X(i, 0) < support(0) || X(i, 1) < X(i, 0) || X(i, 1) > support(1) ||
             (X(i, 0) == X(i, 1) && X(i, 0) == support(0)))
             Rcpp::stop("Invalid observation endpoints within support.");
+        if (entry(i) >= X(i, 1))
+            Rcpp::stop("Each right endpoint or exact event time must be strictly greater than entry.");
+        if (has_truncation && X(i, 0) != X(i, 1))
+            this->X(i, 0) = max(X(i, 0), entry(i));
     }
     if (max_M <= 10){
         NODES_NUM = (1 << (max_M + 1)) - 1; // number of nodes for complete tree
@@ -43,7 +52,7 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
     largest_obs = -LARGE_VALUE;
     for (uword i = 0; i < X.n_rows; ++i) {
         for (uword j = 0; j < 2; ++j) {
-            const double v = X(i, j);
+            const double v = this->X(i, j);
             if (arma::is_finite(v) && v > largest_obs) {
                 largest_obs = v;
             }
@@ -78,6 +87,10 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
 
     n_obs_allocated = vec(NODES_NUM, fill::zeros);
     n_obs_allocated(0) = n; // all observations start at the root
+    if (has_truncation) {
+        for (int obs = 0; obs < n; ++obs)
+            n_obs_allocated(0) += initial_truncation_allocation(obs, support(0), support(1));
+    }
 
     posterior_probs = vec(NODES_NUM, fill::zeros);
     posterior_probs(0) = 1.0; // root node starts with probability 1
@@ -276,6 +289,16 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
             Rcpp::stop("Invalid allocation type.");
         }
     }
+    // Ghosts are allocated independently of observed-interval membership.
+    // Include them before applying the initialization/early-stopping rule.
+    if (has_truncation) {
+        for (int obs = 0; obs < n; ++obs) {
+            n_obs_allocated(left_child) += initial_truncation_allocation(
+                obs, left_bound(left_child), right_bound(left_child));
+            n_obs_allocated(right_child) += initial_truncation_allocation(
+                obs, left_bound(right_child), right_bound(right_child));
+        }
+    }
     if (allocated == 1){
     // check for sum of allocations
         if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
@@ -299,6 +322,22 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
                                            min(right_obs, right_node),
                                            support(0), body_right);
     return denominator > SMALL_VALUE ? numerator / denominator : 0.0;
+}
+
+double PT::initial_truncation_allocation(int obs, double left, double right) const {
+    if (entry(obs) <= support(0)) return 0.0;
+    const double body_right = has_tail ? largest_obs : support(1);
+    const double body_weight = has_tail ? 0.5 : 1.0;
+    const double survival = body_weight * terminal_probability(
+        entry(obs), arma::datum::inf, support(0), body_right) +
+        (has_tail ? 1.0 - body_weight : 0.0);
+    if (!arma::is_finite(survival) || survival <= 0.0)
+        Rcpp::stop("Entry survival probability must be positive at initialization.");
+    const double count = body_weight * terminal_probability(
+        left, min(right, entry(obs)), support(0), body_right) / survival;
+    if (!arma::is_finite(count))
+        Rcpp::stop("Left-truncation expected count overflow at initialization.");
+    return count;
 }
 
 
@@ -370,6 +409,10 @@ void PT::prepare_observation_cache() {
     // The partition, observation intervals and base parameters stay fixed in EM.
     // Store only nonzero kernels, rather than a dense observations-by-leaves matrix.
     observation_kernels.resize(n);
+    if (has_truncation) {
+        truncation_kernels.resize(n);
+        entry_survival_kernels.resize(n);
+    }
     for (int obs = 0; obs < n; ++obs) {
         const double left = X(obs, 0), right = X(obs, 1);
         for (uword j = 0; j < terminal_nodes.n_elem; ++j) {
@@ -380,7 +423,45 @@ void PT::prepare_observation_cache() {
                 terminal_probability(left, right, left_bound(node), right_bound(node));
             if (kernel != 0.0) observation_kernels[obs].emplace_back(node, kernel);
         }
+        if (has_truncation && entry(obs) > support(0)) {
+            for (uword j = 0; j < terminal_nodes.n_elem; ++j) {
+                const int node = static_cast<int>(terminal_nodes(j));
+                const double below = terminal_probability(support(0), entry(obs),
+                    left_bound(node), right_bound(node));
+                const double above = terminal_probability(entry(obs), arma::datum::inf,
+                    left_bound(node), right_bound(node));
+                if (below != 0.0) truncation_kernels[obs].emplace_back(node, below);
+                if (above != 0.0) entry_survival_kernels[obs].emplace_back(node, above);
+            }
+        }
     }
+}
+
+double PT::entry_survival(int obs) const {
+    if (entry(obs) <= support(0)) return 1.0;
+    // Integrate above entry directly to avoid cancellation in 1 - F(entry).
+    double survival = 0.0;
+    for (const auto& kernel : entry_survival_kernels[obs])
+        survival += posterior_probs(kernel.first) * kernel.second;
+    return survival;
+}
+
+void PT::add_truncation_allocations() {
+    vec ghost_counts(nodes_used + 1, fill::zeros);
+    for (int obs = 0; obs < n; ++obs) {
+        if (entry(obs) <= support(0)) continue;
+        const double survival = entry_survival(obs);
+        if (!arma::is_finite(survival) || survival <= 0.0)
+            Rcpp::stop("Entry survival probability must be positive during EM.");
+        ghost_counts.zeros();
+        for (const auto& kernel : truncation_kernels[obs])
+            ghost_counts(kernel.first) = posterior_probs(kernel.first) * kernel.second / survival;
+        for (int node = nodes_used; node > 0; --node)
+            ghost_counts(static_cast<int>(parent_nodes(node))) += ghost_counts(node);
+        n_obs_allocated.head(nodes_used + 1) += ghost_counts;
+    }
+    if (!n_obs_allocated.is_finite())
+        Rcpp::stop("Left-truncation expected count overflow during EM.");
 }
 
 void PT::update_expected_allocations() {
@@ -418,6 +499,7 @@ void PT::update_expected_allocations() {
             }
         }
     }
+    if (has_truncation) add_truncation_allocations();
 }
 
 void PT::update_tree_size() {
@@ -508,6 +590,11 @@ double PT::log_likelihood() const {
             probability += posterior_probs(entry.first) * entry.second;
         if (probability <= 0.0) return -arma::datum::inf;
         value += log(probability);
+        if (has_truncation) {
+            const double survival = entry_survival(obs);
+            if (!arma::is_finite(survival) || survival <= 0.0) return -arma::datum::inf;
+            value -= log(survival);
+        }
     }
     return value;
 }

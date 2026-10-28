@@ -14,7 +14,8 @@ survPT(
   allocated = 1,
   max_EM_iter = 100,
   EM_tol = 1e-06,
-  verbose = TRUE
+  verbose = TRUE,
+  entry = 0
 )
 }
 \arguments{
@@ -23,7 +24,7 @@ right observation endpoints. Use equal endpoints for exact events and
 a right endpoint of `Inf` for right censoring. Additional columns are ignored.}
 
 \item{test_seq}{Evaluation grid; by default, 200 points from the lower
-support bound to the largest finite observed endpoint, including censoring times.}
+support bound to the largest finite endpoint or entry time.}
 
 \item{prior}{Prior type, (1: Uniform, 2: Exponential, 3: Weibull)}
 
@@ -45,6 +46,11 @@ initialization without EM.}
 \item{EM_tol}{Tolerance for EM convergence}
 
 \item{verbose}{Logical, whether to print progress messages}
+
+\item{entry}{Nonnegative finite entry (left-truncation) times, either one
+value for all rows or a vector of length `nrow(X)`. Defaults to `0` (no
+truncation). Each event must occur strictly after entry. Positive truncation
+within the support requires `allocated = 1`.}
 }
 \value{
 A list containing `Left`, `Right`, `Level`, `Allocations`,
@@ -52,8 +58,11 @@ A list containing `Left`, `Right`, `Level`, `Allocations`,
   one including the tail. `Test_seq`, `Survival_Probs`, and `Density` contain
   grid predictions. `tau` is `NA` for bounded support. Body and tail masses
   are included in the existing node arrays without separate return fields.
+  `Allocations` includes both observed and ghost expected counts when
+  truncation is present, and its root value may exceed `nrow(X)`.
   `LogLik` and `LogLik_Trace` report observed
-  log-likelihood (initialization and each EM step; empty trace without EM).
+  log-likelihood conditional on entry (initialization and each EM step;
+  empty trace without EM).
   `EM_Iterations` counts updates; `Converged` indicates whether terminal-mass
   tolerance was reached, and is `FALSE` when no updates were run.
 }
@@ -61,19 +70,33 @@ A list containing `Left`, `Right`, `Level`, `Allocations`,
 Fit a finite Polya tree with a Beta-prior tail split
 }
 \details{
-With infinite upper support, `tau` is the largest finite observed endpoint.
+With infinite upper support, `tau` is the largest finite endpoint after
+intersecting observation intervals with `(entry, Inf)`.
 A new root separates the finite subtree from an unresolved `[tau, Inf)`
 tail. Its left probability has the internal first-level prior
 `q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
 Initial censored allocations use the Beta prior mean `0.5` and the
 selected base conditioned on the finite body. The first layer then uses
 the same clipped mode-style update as other PT branches, at initialization
-and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n - 1))`,
+and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n_total - 1))`,
 with a one-half fallback when the denominator is nonpositive or tiny.
 This is not a posterior-mean update; the fallback need not be an exact MAP
 for Beta shapes below one. Internal PT alpha values retain their original
 finite-subtree depths. No separate scalar MLE is performed.
 
+Under independent left truncation and noninformative censoring, interval
+contributions are `P(max(L, entry) < T <= R) / S(entry)`; exact events
+contribute `f(t) / S(entry)`. Initial allocations and each E-step include
+the ghost count `P(A intersect (0, entry]) / S(entry)` for every node `A`,
+in addition to observed-subject allocations. Initial ghost counts use the
+same conditional base and body/tail prior mean as observed allocations.
+The root count `n_total` is the sum of `1 / S(entry)` under the distribution
+used for that allocation step; it replaces the sample size in the branch
+update denominator. The retained tree is fixed throughout EM.
+Entry times at or below the lower support bound have no truncation effect.
+All-zero `entry` uses the original calculations, including initialization.
+
+Without truncation, the likelihood contributions are as follows.
 If `f` and `P` are the conditional finite-tree density and probability,
 exact events contribute `q_0 * f(t)`, finite intervals contribute
 `q_0 * P(L < T <= R)`, and right censoring at `C < tau` contributes

@@ -31,8 +31,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // SurvPT
-List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP) {
+List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, Rcpp::Nullable<Rcpp::NumericVector> entry);
+RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP entrySEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -46,14 +46,15 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const int >::type max_EM_iter(max_EM_iterSEXP);
     Rcpp::traits::input_parameter< const double >::type EM_tol(EM_tolSEXP);
     Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::NumericVector> >::type entry(entrySEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, entry));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SurvPT_OPT_right", (DL_FUNC) &_SurvPT_OPT_right, 9},
-    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 10},
+    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 11},
     {NULL, NULL, 0}
 };
 

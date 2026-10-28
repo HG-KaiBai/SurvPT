@@ -6,7 +6,7 @@
 \title{Low-level native finite Polya tree interface}
 \usage{
 SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
-  max_EM_iter, EM_tol, verbose)
+  max_EM_iter, EM_tol, verbose, entry = NULL)
 }
 \arguments{
 \item{X}{Numeric matrix with left and right endpoints in its first two
@@ -31,6 +31,10 @@ the added body/tail split when upper support is infinite.}
 \item{EM_tol}{Nonnegative tolerance for terminal-mass changes.}
 
 \item{verbose}{Logical progress-output flag.}
+
+\item{entry}{Optional nonnegative finite scalar or vector of entry times.
+`NULL` supplies zeros. Positive truncation within the support requires
+`allocated = 1`; see \code{\link{survPT}()}.}
 }
 \value{
 A list with native names: `left_bound`, `right_bound`, `node_levels`,
@@ -46,7 +50,7 @@ A list with native names: `left_bound`, `right_bound`, `node_levels`,
 Direct Rcpp entry point for the PT implementation. Most users should call
 \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
 terminal-node indices to R indexing. This interface is retained for
-compatibility and requires all arguments explicitly.
+compatibility. All arguments except `entry` are required explicitly.
 }
 \details{
 Pass a numeric matrix as `X` and numeric vectors for vector arguments.
