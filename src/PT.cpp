@@ -10,6 +10,7 @@ using namespace std;
 #define SMALL_VALUE 1e-300
 #define LARGE_VALUE 1e+300
 
+constexpr double SPLIT_EPSILON = 1e-6;
 
 // constructor
 PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
@@ -123,9 +124,9 @@ void PT::init() {
         parent_nodes(right_child) = i;
 
         // prior alpha values
-        alpha(left_child) = has_tail && i == 0 ? init_alpha(1, left_bound(left_child), right_bound(left_child)) :
+        alpha(left_child) = has_tail && i == 0 ? 1.0 :
             init_alpha(level + 1 - (has_tail ? 1 : 0), left_bound(left_child), right_bound(left_child));
-        alpha(right_child) = has_tail && i == 0 ? init_alpha(1, left_bound(right_child), right_bound(right_child)) :
+        alpha(right_child) = has_tail && i == 0 ? 1.0 :
             init_alpha(level + 1 - (has_tail ? 1 : 0), left_bound(right_child), right_bound(right_child));
 
         // allocate observations to children
@@ -135,7 +136,7 @@ void PT::init() {
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
         double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, 0.0), 1.0);
+            double left_prob = min(max(left_count / total, SPLIT_EPSILON), 1.0 - SPLIT_EPSILON);
             posterior_probs(left_child) = left_prob * posterior_probs(i);
             posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
         } else {
@@ -193,10 +194,10 @@ double PT::init_alpha(int level, double left, double right) {
     if (level <= 0) {
         Rcpp::stop("Level must be positive.");
     }
-    return pow(level, 2.0) * 0.5; // example: increasing with level
+    return pow(level, 2.0); // alpha_l = gamma * l^2, with gamma = 1
     // Uncomment below for prior-dependent alpha initialization
     // if (prior == 1) { // Uniform
-    //     return pow(level, 2.0) * 0.5;
+    //     return pow(level, 2.0);
     // } else if (prior == 2) { // Exponential
     //     const double lambda = prior_params(0);
     //     if (arma::is_finite(right)) {
@@ -348,7 +349,7 @@ void PT::re_allocation() {
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
         double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, 0.0), 1.0);
+            double left_prob = min(max(left_count / total, SPLIT_EPSILON), 1.0 - SPLIT_EPSILON);
             new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
             new_posterior_probs(right_child) = (1 - left_prob) * new_posterior_probs(i);
         } else {

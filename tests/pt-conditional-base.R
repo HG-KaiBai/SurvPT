@@ -120,6 +120,9 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
                          paste(label, "child allocations"))
             assert_close(sum(fit$Posterior_Probs[children]), fit$Posterior_Probs[j],
                          paste(label, "child mass"))
+            splits <- fit$Posterior_Probs[children]/fit$Posterior_Probs[j]
+            stopifnot(all(splits >= 1e-6 - 1e-12),
+                      all(splits <= 1 - 1e-6 + 1e-12))
         }
     }
 

@@ -15,7 +15,7 @@ q <- 0.3
 max_depth <- 8L
 iterations <- c(0:100, 200L, 500L, 1000L)
 em_tolerance <- 1e-12
-near_zero <- 1e-6
+epsilon <- 1e-6
 
 # At these defaults, seed 123 ends with an exact event and seed 1 with censoring.
 # Administrative censoring supplies a counterexample with substantial tail mass.
@@ -33,7 +33,7 @@ datasets <- list(
   administrative = administrative
 )
 
-clip <- function(x) pmin(1, pmax(0, x))
+clip <- function(x) pmin(1 - epsilon, pmax(epsilon, x))
 rows <- summaries <- list()
 for (case in names(datasets)) {
   data <- datasets[[case]]
@@ -41,7 +41,7 @@ for (case in names(datasets)) {
   censored <- is.infinite(data$R)
   tau <- max(data$L)
   censored_at_tau <- sum(censored & data$L == tau)
-  tail_lower_bound <- max(0, (censored_at_tau - 0.5) / (nrow(data) - 1))
+  tail_lower_bound <- clip(censored_at_tau / nrow(data))
   km <- survival::survfit(survival::Surv(L, !censored) ~ 1, data = data)
   km_tail <- tail(as.numeric(km$surv), 1)
   rate <- sum(!censored) / sum(data$L) # Exact exponential MLE for these data.
@@ -70,13 +70,14 @@ for (case in names(datasets)) {
                   as.numeric(fit$Posterior_Probs[2]), p_tail, n_tail,
                   total_mass, fit$LogLik, fit$Converged))
       flush.console()
-      # For n > 1, Beta(1/2,1/2) mode-style update at the added root:
-      # p_tail = clip((n_tail - 0.5) / (n - 1)). This also applies at k = 0.
-      stopifnot(abs(p_tail - clip((n_tail - 0.5) / (nrow(data) - 1))) < 1e-10,
+      # Beta(1,1) mode-style update at the added root:
+      # p_tail = clip(n_tail / n), with epsilon bounds, also at k = 0.
+      stopifnot(abs(p_tail - clip(n_tail / nrow(data))) < 1e-10,
                 abs(total_mass - 1) < 1e-10,
                 abs(sum(fit$Allocations[2:3]) - nrow(data)) < 1e-8,
                 abs(survival_tau - p_tail) < 1e-10,
-                p_tail >= tail_lower_bound - 1e-10)
+                p_tail >= tail_lower_bound - 1e-10,
+                p_tail <= 1 - epsilon + 1e-10)
 
       # Independently verify initialization and consecutive E steps.
       # A censored row at C contributes p_tail / S(C) to the next tail count.
@@ -106,7 +107,7 @@ for (case in names(datasets)) {
     trajectory <- do.call(rbind, trajectory)
     first <- trajectory[1, ]
     last <- tail(trajectory, 1)
-    zero_steps <- trajectory$actual_iterations[trajectory$tail_mass == 0]
+    floor_steps <- trajectory$actual_iterations[trajectory$tail_mass <= epsilon + 1e-10]
     summary_row <- data.frame(
       case, base, n = nrow(data), censoring_fraction = mean(censored), tau,
       censored_at_tau, initial_tail_mass = first$tail_mass,
@@ -114,8 +115,8 @@ for (case in names(datasets)) {
       fraction_initial_tail_retained = last$tail_mass / first$tail_mass,
       final_body_mass = last$body_mass, tail_lower_bound, km_tail,
       true_survival_tau = pweibull(tau, K, 1 / Lambda, lower.tail = FALSE),
-      final_near_zero = last$tail_mass < near_zero,
-      first_recorded_zero_iteration = if (length(zero_steps)) min(zero_steps) else NA_integer_,
+      final_at_floor = last$tail_mass <= epsilon + 1e-10,
+      first_recorded_floor_iteration = if (length(floor_steps)) min(floor_steps) else NA_integer_,
       final_actual_iterations = last$actual_iterations, converged = last$converged
     )
     rows[[length(rows) + 1L]] <- trajectory
@@ -130,4 +131,5 @@ print(summary_table, row.names = FALSE, digits = 7)
 cat("\nAll mass-conservation, root-update, and checked E-step identities passed.\n")
 cat("Iteration 0 is AFTER initial allocation and its mode-style mass update.\n")
 cat("Initialization uses prior mean 1/2; the returned initial tail mass need not be 1/2.\n")
+cat("All split probabilities are bounded to [1e-6, 1 - 1e-6].\n")
 cat("A small tail is not universal: censoring at tau enforces the reported lower bound.\n")

@@ -64,15 +64,16 @@ Fit a finite Polya tree with a Beta-prior tail split
 With infinite upper support, `tau` is the largest finite observed endpoint.
 A new root separates the finite subtree from a `[tau, Inf)`
 tail. Its left probability has the internal first-level prior
-`q_0 ~ Beta(0.5, 0.5)`; `p_tail = 1 - q_0`.
+`q_0 ~ Beta(1, 1)`; `p_tail = 1 - q_0`.
 Initial censored allocations use the Beta prior mean `0.5` and the
 selected base conditioned on the finite body. The first layer then uses
 the same clipped mode-style update as other PT branches, at initialization
-and in every EM iteration: `q_0 = clip((n_body - 0.5)/(n - 1))`,
-with a one-half fallback when the denominator is nonpositive or tiny.
-This is not a posterior-mean update; the fallback need not be an exact MAP
-for Beta shapes below one. Internal PT alpha values retain their original
-finite-subtree depths. No separate scalar MLE is performed.
+and in every EM iteration: `q_0 = clip(n_body/n)`. All split probabilities
+are bounded to `[epsilon, 1 - epsilon]`, with `epsilon = 1e-6`.
+Other branches use `alpha_l = gamma * l^2`, with `gamma = 1` and `l`
+measured from the finite-subtree root. A branch with a nonpositive or tiny
+update denominator falls back to one-half. These are mode-style, not
+posterior-mean updates. No separate scalar MLE is performed.
 
 If `f` and `P` are the conditional finite-tree density and probability,
 exact events contribute `q_0 * f(t)`, finite intervals contribute

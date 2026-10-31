@@ -5,6 +5,6 @@ bibentry(
   title = "SurvPT: Survival Estimation with Finite Polya Trees",
   author = c(person("Yixing", "Zhao"), person("Liqun", "Diao")),
   year = "2026",
-  note = "R package version 0.3.1.",
+  note = "R package version 0.3.2.",
   url = "https://github.com/HG-KaiBai/SurvPT"
 )

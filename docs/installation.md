@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.3.1.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.3.2.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.3.1.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.3.2.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -68,3 +68,5 @@ Version 0.2.0 changes censored-data allocations for exponential and Weibull PT b
 Version 0.3.0 adds an internal Beta-prior body/tail split at the largest finite observed endpoint for unbounded support. It replaces the uniform cutoff and leaves tail shape unspecified for all bases. Cached leaf probabilities accelerate EM while preserving its update rules.
 
 Version 0.3.1 carries uniform survival forward as `S(tau)` at finite times beyond `tau` and uses a conditional exponential tail for the exponential base. Weibull tail predictions remain unchanged. Refit earlier analyses to use the updated tail predictions; see [Methods](methods.md).
+
+Version 0.3.2 bounds all PT split probabilities to `[1e-6, 1 - 1e-6]`, uses a `Beta(1, 1)` body/tail prior, and sets the finite-tree coefficient to `gamma = 1` (`alpha_l = l^2`). These changes affect fitted masses for both bounded and unbounded support; refit analyses and record the source commit or archive checksum.

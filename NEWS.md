@@ -1,3 +1,12 @@
+# SurvPT 0.3.2
+
+- Bound all PT split probabilities to `[1e-6, 1 - 1e-6]` during
+  initialization and every EM update.
+- Use `Beta(1, 1)` for the body/tail split and `gamma = 1` for the
+  finite-subtree schedule `alpha_l = gamma * l^2`, including bounded support.
+- Update regression checks and the tail diagnostic for the new priors and
+  probability bounds.
+
 # SurvPT 0.3.1
 
 - Uniform-base survival at finite times beyond tau now stays at S(tau)

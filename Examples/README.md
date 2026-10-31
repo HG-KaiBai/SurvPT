@@ -28,6 +28,7 @@ After installing SurvPT, run these commands from the repository root:
 ```sh
 Rscript Examples/quickstart.R
 Rscript tests/pt-conditional-base.R
+Rscript tests/pt-tail-root.R
 ```
 
 The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three root-only trees, and three exact-data configurations. They do not run the full simulation studies.

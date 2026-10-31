@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.3.1, including its partition, allocation updates, and tail conventions.
+This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.3.2, including its partition, allocation updates, and tail conventions.
 
 ## Finite PT partition
 
@@ -10,14 +10,14 @@ With infinite upper support, `survPT()` first splits at `tau`, the largest finit
 
 Splitting ends at `max_M` within the finite subtree or when the initial allocated count is below one. The added root split does not consume this depth budget: with unbounded support, the finite subtree root is reported at level one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
-For finite-subtree children at relative depth `l`, the branch prior parameter is `alpha_l = l^2 / 2`. The branch-mass update computes
+For finite-subtree children at relative depth `l`, the branch prior parameter is `alpha_l = gamma * l^2`, with `gamma = 1`. All split probabilities are bounded to `[epsilon, 1 - epsilon]`, with `epsilon = 1e-6`, at initialization and in every EM iteration. The branch-mass update computes
 
 \[
-q_L=\operatorname{clip}_{[0,1]}
+q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
 \frac{\alpha_l+n_L-1}{2\alpha_l+n_L+n_R-2},\qquad q_R=1-q_L,
 \]
 
-with a one-half fallback when the denominator is too small. Child masses are parent mass times these branch proportions. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
+with a one-half fallback when the denominator is too small. Child masses are parent mass times these branch proportions. The bounds apply to conditional split probabilities; a descendant's absolute mass can be smaller than `epsilon`. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
 
 ## Beta prior for the first layer
 
@@ -30,16 +30,16 @@ Let `f` and `P_f` denote the conditional finite-subtree density and probabilitie
 | Right censored at `C < tau` | `theta_0 * P_f(C < T <= tau) + p_tail` |
 | Right censored at `tau` | `p_tail` |
 
-The first layer has the internal prior `q_0 ~ Beta(a,b)` with `a = b = 0.5`, matching the original first-level PT prior. Here `q_0 = theta_0` and `p_tail = 1 - q_0` are mathematical notation, not separate return fields; masses remain in the existing node arrays. Initialization uses the prior mean `0.5` to allocate censored observations between the finite conditional base and the tail. Once allocated counts are available, the first layer uses the same clipped mode-style rule as the PT branches:
+The first layer has the internal prior `q_0 ~ Beta(a,b)` with `a = b = 1`. Here `q_0 = theta_0` and `p_tail = 1 - q_0` are mathematical notation, not separate return fields; masses remain in the existing node arrays. Initialization uses the prior mean `0.5` to allocate censored observations between the finite conditional base and the tail. Once allocated counts are available, the first layer uses the same clipped mode-style rule as the PT branches:
 
 \[
-q_0^{\mathrm{new}}=\operatorname{clip}_{[0,1]}
+q_0^{\mathrm{new}}=\operatorname{clip}_{[\epsilon,1-\epsilon]}
 \frac{a+n_{\mathrm{body}}-1}{a+b+n_{\mathrm{body}}+n_{\mathrm{tail}}-2}.
 \]
 
-When the denominator is nonpositive or at most `1e-300`, the existing one-half fallback is used. With fractional allocations, `n_body + n_tail = n`. The corresponding complete-data Beta parameters are `a + n_body` and `b + n_tail`; this is not their posterior-mean update. The clipped rule and fallback need not equal the exact MAP when a Beta shape is below one.
+When a branch denominator is nonpositive or at most `1e-300`, the existing one-half fallback is used. With fractional allocations, `n_body + n_tail = n`, so the first-layer update simplifies to `q_0 = clip(n_body / n)` and `p_tail = clip(n_tail / n)`. Both body and tail masses therefore remain between `epsilon` and `1 - epsilon`, including when every observation is exact or every observation is right censored at `tau`. The corresponding complete-data Beta parameters are `1 + n_body` and `1 + n_tail`; this is not their posterior-mean update.
 
-In every EM iteration the E-step includes current tail mass in each right-censoring denominator, and **updates `q_0` and `p_tail` along with the finite tree**. There is no separate scalar MLE or frozen first-layer probability. The finite subtree retains its original alpha schedule relative to its own root; adding this layer does not shift those alpha values or consume `max_M`. `LogLik_Trace` reports observed log-likelihood, which need not increase under the prior-adjusted mode-style updates. Bounded support has no extra split.
+In every EM iteration the E-step includes current tail mass in each right-censoring denominator, and **updates `q_0` and `p_tail` along with the finite tree**. There is no separate scalar MLE or frozen first-layer probability. The finite subtree uses `alpha_l = l^2` relative to its own root; adding this layer does not shift those alpha values or consume `max_M`. `LogLik_Trace` reports observed log-likelihood, which need not increase under the prior-adjusted mode-style updates. Bounded support has no extra split and uses the same finite-tree priors and split bounds.
 
 ## Conditional base distribution inside terminal intervals
 
