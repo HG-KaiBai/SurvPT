@@ -69,4 +69,4 @@ Version 0.3.0 adds an internal Beta-prior body/tail split at the largest finite 
 
 Version 0.3.1 carries uniform survival forward as `S(tau)` at finite times beyond `tau` and uses a conditional exponential tail for the exponential base. Weibull tail predictions remain unchanged. Refit earlier analyses to use the updated tail predictions; see [Methods](methods.md).
 
-Version 0.3.2 bounds all PT split probabilities to `[1e-6, 1 - 1e-6]`, uses a `Beta(1, 1)` body/tail prior, and sets the finite-tree coefficient to `gamma = 1` (`alpha_l = l^2`). These changes affect fitted masses for both bounded and unbounded support; refit analyses and record the source commit or archive checksum.
+Version 0.3.2 bounds all PT split probabilities to `[1e-6, 1 - 1e-6]`, uses a `Beta(1, 1)` body/tail prior, and sets finite-tree prior parameters to `alpha_m = max(1, 0.5 * m^2)`. These changes affect fitted masses for both bounded and unbounded support; refit analyses and record the source commit or archive checksum.

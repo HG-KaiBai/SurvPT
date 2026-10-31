@@ -2,8 +2,9 @@
 
 - Bound all PT split probabilities to `[1e-6, 1 - 1e-6]` during
   initialization and every EM update.
-- Use `Beta(1, 1)` for the body/tail split and `gamma = 1` for the
-  finite-subtree schedule `alpha_l = gamma * l^2`, including bounded support.
+- Use `Beta(1, 1)` for the body/tail split and the finite-subtree schedule
+  `alpha_m = max(1, 0.5 * m^2)`, including bounded support. The first finite
+  split uses alpha 1; deeper levels retain the original `0.5 * m^2` schedule.
 - Update regression checks and the tail diagnostic for the new priors and
   probability bounds.
 

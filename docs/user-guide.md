@@ -53,7 +53,7 @@ These plug-in parameters are held fixed by the tree fit. Their estimation uncert
 
 ## Choose support and evaluation points
 
-With the default `support = c(0, Inf)`, all three bases use a finite tree ending at `tau = max(finite observed endpoints)` and a tail of mass `p_tail`. The internal first-layer probability `q_0 = 1 - p_tail` has a `Beta(1, 1)` prior and is updated in every EM iteration. No additional argument is required. Initial allocation uses the prior mean `0.5`; the tree uses mode-style branch updates with every split bounded to `[1e-6, 1 - 1e-6]`. Other branches use `alpha_l = l^2` (`gamma = 1`) at finite-subtree depth `l`. `S(tau) = p_tail`, which is at least `1e-6`. For finite `t > tau`:
+With the default `support = c(0, Inf)`, all three bases use a finite tree ending at `tau = max(finite observed endpoints)` and a tail of mass `p_tail`. The internal first-layer probability `q_0 = 1 - p_tail` has a `Beta(1, 1)` prior and is updated in every EM iteration. No additional argument is required. Initial allocation uses the prior mean `0.5`; the tree uses mode-style branch updates with every split bounded to `[1e-6, 1 - 1e-6]`. Other branches use `alpha_m = max(1, 0.5 * m^2)` at finite-subtree depth `m`, giving 1, 2, 4.5 at depths 1, 2, 3. `S(tau) = p_tail`, which is at least `1e-6`. For finite `t > tau`:
 
 | Base | Survival | Density |
 | --- | --- | --- |

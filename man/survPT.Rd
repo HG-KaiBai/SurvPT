@@ -70,9 +70,9 @@ selected base conditioned on the finite body. The first layer then uses
 the same clipped mode-style update as other PT branches, at initialization
 and in every EM iteration: `q_0 = clip(n_body/n)`. All split probabilities
 are bounded to `[epsilon, 1 - epsilon]`, with `epsilon = 1e-6`.
-Other branches use `alpha_l = gamma * l^2`, with `gamma = 1` and `l`
-measured from the finite-subtree root. A branch with a nonpositive or tiny
-update denominator falls back to one-half. These are mode-style, not
+Other branches use `alpha_m = max(1, 0.5 * m^2)`, with `m` measured from
+the finite-subtree root: depths 1, 2, 3 use 1, 2, 4.5. A branch with a
+nonpositive or tiny update denominator falls back to one-half. These are mode-style, not
 posterior-mean updates. No separate scalar MLE is performed.
 
 If `f` and `P` are the conditional finite-tree density and probability,

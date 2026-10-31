@@ -176,7 +176,7 @@ for (prior in 1:3) {
               censored$Converged)
 }
 
-# Bounded support has no added tail and uses gamma = 1.
+# Bounded support has no added tail and keeps first-level alpha = 1.
 bounded <- fit_tail(rbind(c(1, 1), c(2, 2), c(2.5, 3)), depth = 1,
                     iterations = 1, support = c(0, 4))
 stopifnot(is.na(bounded$tau), max(bounded$Level) == 1)
@@ -199,9 +199,11 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (allocated in 0:1) {
                          3L, switch(prior, c(0.12, 1), 0.7, c(0.7, 1.5)),
                          allocated, iterations, 0, FALSE)
         levels <- as.numeric(native$node_levels)
-        expected_alpha <- pmax(1, levels - as.integer(!finite))^2
+        # Root/body-tail alpha = 1; finite-subtree depths 1, 2, 3 use 1, 2, 4.5.
+        relative_depths <- pmax(0, levels - as.integer(!finite))
+        expected_alpha <- c(1, 1, 2, 4.5)[relative_depths + 1]
         near(as.numeric(native$alpha), expected_alpha)
-        stopifnot(max(expected_alpha) >= 4)
+        stopifnot(max(expected_alpha) == 4.5)
         masses <- as.numeric(native$posterior_probs)
         near(sum(masses[native$terminal_nodes + 1]), 1)
         splits <- numeric()
@@ -212,6 +214,14 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (allocated in 0:1) {
             stopifnot(length(children) == 2)
             near(sum(masses[children]), masses[j])
             splits <- c(splits, masses[children]/masses[j])
+            # Six exact events in one child give conditional modes 7/8 at
+            # depth 2 (alpha = 2) and 19/26 at depth 3 (alpha = 4.5).
+            populated <- children[native$n_obs_allocated[children] == 6]
+            depth <- relative_depths[children[1]]
+            if (depth %in% c(2, 3)) {
+                stopifnot(length(populated) == 1)
+                near(masses[populated]/masses[j], c(7/8, 19/26)[depth - 1])
+            }
         }
         stopifnot(all(splits >= epsilon - 1e-12),
                   all(splits <= 1 - epsilon + 1e-12),
