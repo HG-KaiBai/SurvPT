@@ -13,7 +13,7 @@
 | Partition is fixed after initialization | EM does not revisit early stopping or split locations |
 | Direct exponentials and CDF differences are used | Extreme rates, shapes, or tail locations can lose precision |
 | Input checks are incomplete | Validate missing values, numeric types, interval ordering, support, and iteration controls yourself |
-| Exact events at the root's lower endpoint are not assigned by the strict left-bound rule | Use positive exact event times with the default zero lower support; assess another model for structural zero times |
+| A positive lower support bound is excluded from node intervals | Exact events must lie strictly above a positive lower bound; zero is included when the lower bound is zero |
 | Finite support and observation bounds can disagree during initialization | Use a justified support and encode intervals consistently; investigate any allocation-sum diagnostic |
 
 The field name `Posterior_Probs` is historical. Read [Methods](methods.md) for the actual PT branch-mass update.
@@ -35,7 +35,7 @@ These limitations are documented to distinguish observed software behavior from 
 
 **The loaded version is not the installed version.** Restart R, run `find.package("SurvPT")`, inspect `.libPaths()`, and reinstall into the intended library. `devtools::load_all()` uses a checkout, whereas `library(SurvPT)` loads an installed package.
 
-**An evaluation grid cannot be generated.** Supply a finite sorted `test_seq`. The PT default grid relies on rows with a finite right endpoint; all-right-censored data need an explicit grid and may also contain insufficient information for the intended fit.
+**An evaluation grid cannot be generated.** Check that the first two data columns contain finite observation endpoints, or supply a finite sorted `test_seq`. The PT default grid includes right-censoring times and works for all-right-censored data with finite left endpoints. Such data may still contain insufficient information for the intended fit.
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 

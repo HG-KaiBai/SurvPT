@@ -25,9 +25,9 @@ and \code{L = 0} for an event observed before a positive inspection time.
 A status column is not used. Missing values are not supported.}
 
 \item{test_seq}{Numeric evaluation points, preferably a sorted finite grid.
-If \code{NULL}, uses 200 points from \code{support[1]} to the largest endpoint among
-rows with finite right endpoints. Supply a grid explicitly when no such
-rows exist or when comparing fits.}
+If \code{NULL}, uses 200 points from \code{support[1]} to the largest finite endpoint
+in the first two columns of \code{X}, including right-censoring times.
+Supply a grid explicitly when comparing fits.}
 
 \item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
 or \code{3} for Weibull.}
@@ -88,10 +88,11 @@ A uniform terminal interval with an infinite right endpoint is capped at
 Exponential and Weibull terminal intervals retain their infinite tails.
 This cutoff does not replace \code{Inf} in the returned \code{Right} boundaries.
 
-Intervals represent \verb{(L, R]}, with exact events treated separately. Exact
-events must lie strictly above the root's lower endpoint. Input validation
-is incomplete: check numeric types, missing values, endpoint ordering,
-support compatibility, and integer iteration controls before fitting.
+Intervals represent \verb{(L, R]}, including zero when \code{L = 0}, with exact events
+treated separately. Node allocation and density use \verb{(a, b]}, or \verb{[0, b]}
+when \code{a = 0}; exact events at positive split points belong to the left node.
+Input validation is incomplete: check numeric types, missing values,
+endpoint ordering, support compatibility, and integer iteration controls.
 
 Branch masses use a clipped, mode-style update with depth-dependent prior
 parameters, not posterior draws or the usual posterior-mean update.

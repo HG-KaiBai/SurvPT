@@ -1,11 +1,44 @@
 # Historical interactive comparison; see Examples/README.md before running.
-# Requires devtools and interval. View() calls need an interactive session;
-# later fiducial plots also require constructing the currently commented-out fid.
+# Requires devtools, interval and spBayesSurv 1.1.9.
+# Optional fiducial plots require constructing the currently commented-out fid.
 devtools::load_all()
 library(interval)
 library(spBayesSurv)
 
-test_data = data_rc(123, 200, 1, 0.12, q = 0.3)
+K = 1
+Lambda = 0.12
+n = 200
+test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
+exp_par = estimate_exp(test_data$L, test_data$R)
+
+# Both PT fits and the later comparisons use the same finite observation grid.
+obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
+x = seq(0, max(obs.mat), length.out = 201)
+true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
+
+cat("Calling SurvPT with uniform prior...\n")
+result_unif <- survPT(test_data, test_seq = x, prior = 1,
+                      max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+
+cat("Calling SurvPT with exponential prior...\n")
+result_exp <- survPT(test_data, test_seq = x, prior = 2, prior_params = exp_par,
+                     max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+
+# Retain the original survival SSE and probability-increment RMSE comparisons.
+pt_results <- list(Unif = result_unif, Exp = result_exp)
+pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
+  fit <- pt_results[[method]]
+  survival <- as.numeric(fit$Survival_Probs)
+  data.frame(
+    Method = method,
+    Terminal_Mass = sum(fit$Posterior_Probs[fit$Terminal_Nodes]),
+    Survival_SSE = sum((survival - true.surv)^2),
+    Increment_RMSE = sqrt(mean((abs(diff(c(survival, 0))) -
+                                abs(diff(c(true.surv, 0))))^2))
+  )
+}))
+print(pt_checks, row.names = FALSE)
+
 # All MPT/TBP helpers are defined here; only installed R packages are used.
 # Baseline mixed Polya tree using spBayesSurv 1.1.9.
 # Its public wrapper rejects ~1. A zero design column contributes exactly zero
@@ -115,7 +148,7 @@ for (l in 0:9){
 print(sum(result_opt$Posterior_Probs[result_opt$Terminal_Nodes]))
 
 grid = result_unif$Test_seq
-fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
+#fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
 
 # Encode censoring for Surv(interval2), leaving test_data unchanged.
 bayes_data <- data.frame(L = test_data$L, R = test_data$R)

@@ -3,6 +3,8 @@
 
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include <utility>
+#include <vector>
 
 using namespace Rcpp;
 using namespace arma;
@@ -43,6 +45,16 @@ public:
     List output(); // output results
 
 private:
+    void prepare_em_cache();
+    void update_observation_probabilities();
+    double cached_individual_allocation(arma::uword obs, int node) const;
+    bool allocation_cache_ready = false;
+    arma::uvec terminal_indices;
+    std::vector<std::pair<int, int>> child_nodes;
+    // Leaf indices remain in the original terminal_nodes order.
+    std::vector<std::vector<arma::uword>> node_terminal_indices;
+    mat observation_leaf_probabilities;
+    vec observation_probabilities;
     double terminal_right_bound(double right) const;
     double base_survival(double x) const;
     double base_density(double x) const;

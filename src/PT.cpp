@@ -205,7 +205,9 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
         if (allocated == 1) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
+                if ((left_obs > left_bound(left_child) ||
+                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
+                    right_obs <= right_bound(left_child)) {
                     // point mass
                     in_node_obs(left_child, obs) = 1.0;
                     n_obs_allocated(left_child) += 1.0;
@@ -217,7 +219,9 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
 
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
+                if ((left_obs > left_bound(right_child) ||
+                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
+                    right_obs <= right_bound(right_child)) {
                     // point mass
                     in_node_obs(right_child, obs) = 1.0;
                     n_obs_allocated(right_child) += 1.0;
@@ -229,11 +233,15 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
         } else if (allocated == 0) {
             // hard allocation for MW method
             if (left_obs == right_obs) {
-                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
+                if ((left_obs > left_bound(left_child) ||
+                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
+                    right_obs <= right_bound(left_child)) {
                     in_node_obs(left_child, obs) = 1.0;
                     n_obs_allocated(left_child) += 1.0;
                 }
-                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
+                if ((left_obs > left_bound(right_child) ||
+                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
+                    right_obs <= right_bound(right_child)) {
                     in_node_obs(right_child, obs) = 1.0;
                     n_obs_allocated(right_child) += 1.0;
                 }
@@ -320,6 +328,7 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
 
 
 void PT::EM_step() {
+    if (max_EM_iter > 0) prepare_em_cache();
     bool condition = true;
     int iter = 1;
     if (verbose) {
@@ -328,10 +337,9 @@ void PT::EM_step() {
     auto start = std::chrono::high_resolution_clock::now();
     while (condition && iter <= max_EM_iter)
     {
-        arma::uvec idx = arma::conv_to<arma::uvec>::from(terminal_nodes);
-        vec old_terminal_probs = posterior_probs.elem(idx);
+        vec old_terminal_probs = posterior_probs.elem(terminal_indices);
         re_allocation(); // EM step
-        double diff = arma::norm(posterior_probs.elem(idx) - old_terminal_probs, 2);
+        double diff = arma::norm(posterior_probs.elem(terminal_indices) - old_terminal_probs, 2);
         condition = (diff > EM_tol);
         if (verbose) {
             auto end = std::chrono::high_resolution_clock::now();
@@ -345,18 +353,16 @@ void PT::EM_step() {
 
 
 void PT::re_allocation() {
+    if (allocation_cache_ready) update_observation_probabilities();
     for (int i = 0; i < nodes_used; i++) {
 
         // skip terminal nodes
-        if (arma::any(terminal_nodes == static_cast<double>(i))) {
+        if (child_nodes[i].first < 0) {
             continue;
         }
 
-        // find children by parent_nodes
-        arma::uvec children = arma::find(parent_nodes == static_cast<double>(i));
-
-        int left_child = min(children);
-        int right_child = max(children);
+        const int left_child = child_nodes[i].first;
+        const int right_child = child_nodes[i].second;
 
         // allocate observations to children
         update_allocations(i, left_child, right_child);
@@ -395,34 +401,46 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
             // update for left child
             if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
 
-                if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
+                if ((left_obs > left_bound(left_child) ||
+                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
+                    right_obs <= right_bound(left_child)) {
                     // point mass
                     in_node_obs(left_child, obs) = 1.0;
                     n_obs_allocated(left_child) += 1.0;
                 } else if (right_obs != left_obs) {
                     in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+                    n_obs_allocated(left_child) += allocation_cache_ready ?
+                        cached_individual_allocation(obs, left_child) :
+                        update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
                 }
             }
             // update for right child
             if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
 
-                if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
+                if ((left_obs > left_bound(right_child) ||
+                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
+                    right_obs <= right_bound(right_child)) {
                     // point mass
                     in_node_obs(right_child, obs) = 1.0;
                     n_obs_allocated(right_child) += 1.0;
                 } else if (right_obs != left_obs) {
                     in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+                    n_obs_allocated(right_child) += allocation_cache_ready ?
+                        cached_individual_allocation(obs, right_child) :
+                        update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
                 }
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
-            if (left_obs > left_bound(left_child) && right_obs <= right_bound(left_child)) {
+            if ((left_obs > left_bound(left_child) ||
+                 (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
+                right_obs <= right_bound(left_child)) {
                 in_node_obs(left_child, obs) = 1.0;
                 n_obs_allocated(left_child) += 1.0;
             }
-            if (left_obs > left_bound(right_child) && right_obs <= right_bound(right_child)) {
+            if ((left_obs > left_bound(right_child) ||
+                 (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
+                right_obs <= right_bound(right_child)) {
                 in_node_obs(right_child, obs) = 1.0;
                 n_obs_allocated(right_child) += 1.0;
             }
@@ -437,6 +455,95 @@ void PT::update_allocations(int parent, int left_child, int right_child) {
             std::cout << "Sum of allocations exceeds parent sample size." << std::endl;
         }
     }
+}
+
+void PT::prepare_em_cache() {
+    terminal_indices = arma::conv_to<arma::uvec>::from(terminal_nodes);
+    child_nodes.assign(nodes_used + 1, std::make_pair(-1, -1));
+    for (int node = 1; node <= nodes_used; ++node) {
+        const int parent = static_cast<int>(parent_nodes(node));
+        if (child_nodes[parent].first < 0) child_nodes[parent].first = node;
+        else child_nodes[parent].second = node;
+    }
+
+    allocation_cache_ready = false;
+    if (nodes_used == 0 || n == 0 || !posterior_probs.is_finite()) return;
+
+    bool has_censored = false;
+    for (int obs = 0; obs < n; ++obs) {
+        const double left = X(obs, 0), right = X(obs, 1);
+        if (!arma::is_finite(left) || std::isnan(right) || right < left) return;
+        has_censored = has_censored || left != right;
+    }
+    if (!has_censored) return;
+
+    // Descendant leaves can replace interval intersections only for a proper
+    // partition. Preserve the original path for degenerate numerical splits.
+    for (int node = 0; node <= nodes_used; ++node) {
+        if (!arma::is_finite(left_bound(node)) || std::isnan(right_bound(node)) ||
+            right_bound(node) <= left_bound(node)) return;
+        const int left = child_nodes[node].first;
+        const int right = child_nodes[node].second;
+        if (left >= 0 && (right < 0 || left_bound(left) != left_bound(node) ||
+            right_bound(left) != left_bound(right) || right_bound(right) != right_bound(node) ||
+            right_bound(left) <= left_bound(node) || right_bound(left) >= right_bound(node))) return;
+    }
+    for (uword k = 0; k < terminal_indices.n_elem; ++k) {
+        const uword leaf = terminal_indices(k);
+        if (terminal_right_bound(right_bound(leaf)) <= left_bound(leaf)) return;
+    }
+
+    // Bound the additional dense probability cache to 64 MiB per fit.
+    const uword max_cache_elements = (64u * 1024u * 1024u) / sizeof(double);
+    if (terminal_indices.n_elem > max_cache_elements / static_cast<uword>(n)) return;
+    observation_leaf_probabilities.zeros(terminal_indices.n_elem, n);
+    observation_probabilities.zeros(n);
+    for (int obs = 0; obs < n; ++obs) {
+        if (X(obs, 0) == X(obs, 1)) continue;
+        for (uword k = 0; k < terminal_indices.n_elem; ++k) {
+            const uword leaf = terminal_indices(k);
+            const double probability = terminal_probability(X(obs, 0), X(obs, 1),
+                                                            left_bound(leaf), right_bound(leaf));
+            if (!arma::is_finite(probability)) {
+                observation_leaf_probabilities.reset();
+                observation_probabilities.reset();
+                return;
+            }
+            observation_leaf_probabilities(k, obs) = probability;
+        }
+    }
+
+    node_terminal_indices.assign(nodes_used + 1, std::vector<uword>());
+    for (uword k = 0; k < terminal_indices.n_elem; ++k) {
+        int node = static_cast<int>(terminal_indices(k));
+        while (node > 0) {
+            node_terminal_indices[node].push_back(k);
+            node = static_cast<int>(parent_nodes(node));
+        }
+    }
+    allocation_cache_ready = true;
+}
+
+void PT::update_observation_probabilities() {
+    for (int obs = 0; obs < n; ++obs) {
+        if (X(obs, 0) == X(obs, 1)) continue;
+        double probability = 0.0;
+        for (uword k = 0; k < terminal_indices.n_elem; ++k) {
+            probability += posterior_probs(terminal_indices(k)) * observation_leaf_probabilities(k, obs);
+        }
+        observation_probabilities(obs) = probability;
+    }
+}
+
+double PT::cached_individual_allocation(uword obs, int node) const {
+    double joint_probability = 0.0;
+    // Keep the original leaf summation order. Summing child totals or using
+    // prefix-sum subtraction would change floating-point rounding.
+    for (uword k : node_terminal_indices[node]) {
+        joint_probability += posterior_probs(terminal_indices(k)) * observation_leaf_probabilities(k, obs);
+    }
+    const double probability = observation_probabilities(obs);
+    return probability > SMALL_VALUE ? joint_probability / probability : 0.0;
 }
 
 double PT::update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
@@ -533,7 +640,7 @@ double PT::terminal_probability(double left, double right, double a, double b) c
         return 0.0;
     }
 
-    // P(left < T < right | a < T < b) under the selected base distribution.
+    // Conditional continuous probability; endpoint inclusion does not change it.
     const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
     const double numerator = prior == 1 ? hi - lo : base_survival(lo) - base_survival(hi);
     if (denom > SMALL_VALUE) {
@@ -544,7 +651,9 @@ double PT::terminal_probability(double left, double right, double a, double b) c
 
 double PT::terminal_density(double t, double a, double b) const {
     b = terminal_right_bound(b);
-    if (t < a || t >= b) {
+    // Match exact-event allocation: (a, b], or [0, b] when a is zero.
+    // Infinity is not an event time, even for an unbounded terminal interval.
+    if (std::isinf(t) || t < a || t > b || (t == a && a != 0.0)) {
         return 0.0;
     }
     const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);

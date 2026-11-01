@@ -8,7 +8,7 @@ assert_close <- function(actual, expected, label, tolerance = 1e-10) {
     invisible(error)
 }
 
-times <- rep(c(0.1, 0.5, 1, 2), each = 4)
+times <- rep(c(0, 0.1, 0.5, 1, 2), each = 4)
 observations <- rbind(cbind(times, times), c(0, 0.3), c(0.1, 1.5),
                       c(1, 3), c(0.9, Inf), c(2.6, Inf))
 
@@ -50,7 +50,7 @@ reference_density <- function(fit, t, prior, cap) {
     sum(vapply(fit$Terminal_Nodes, function(j) {
         bounds <- leaf_bounds(fit, j, prior, cap)
         a <- bounds[1]; b <- bounds[2]
-        if (t < a || t >= b) return(0)
+        if (!is.finite(t) || t < a || t > b || (t == a && a != 0)) return(0)
         density <- if (prior == 1) 1/(b-a) else
             base_density(t, prior)/(base_survival(a, prior)-base_survival(b, prior))
         fit$Posterior_Probs[j] * density
@@ -61,7 +61,7 @@ reference_allocations <- function(fit, data, prior, cap) {
         a <- fit$Left[j]; b <- fit$Right[j]
         sum(vapply(seq_len(nrow(data)), function(i) {
             l <- data[i, 1]; r <- data[i, 2]
-            if (l == r) return(as.numeric(l > a && l <= b))
+            if (l == r) return(as.numeric((l > a || (a == 0 && l == 0)) && l <= b))
             numerator <- reference_mass(fit, max(l, a), min(r, b), prior, cap)
             denominator <- reference_mass(fit, l, r, prior, cap)
             if (denominator > 0) numerator/denominator else 0
@@ -153,3 +153,79 @@ for (prior in 1:3) {
     assert_close(after$Posterior_Probs, before$Posterior_Probs, "exact observation masses")
 }
 cat(sprintf("All %d mixed-censoring cases, 3 root-only cases and 3 exact-data cases passed.\n", cases))
+
+# Zero belongs to the first leaf. Positive split points and the finite upper
+# endpoint belong to the leaf on their left, for allocation and density alike.
+boundary_cases <- 0L
+for (prior in 1:3) {
+    params <- switch(prior, NULL, 1, c(1, 2))
+    probe <- survPT(rbind(c(0, 0), c(2, 2)), prior = prior, prior_params = params,
+                    support = c(0, 2), max_M = 1, max_EM_iter = 0,
+                    test_seq = c(0, 2), verbose = FALSE)
+    split <- as.numeric(probe$Right[2])
+    exact_times <- c(0, 0, split, split, 2)
+    data <- cbind(exact_times, exact_times)
+    points <- c(0, split, 2, 2 + 1e-8, Inf)
+
+    for (allocated in 0:1) for (depth in c(1, 3)) for (iterations in c(0, 5)) {
+        fit <- survPT(data, prior = prior, prior_params = params,
+                      support = c(0, 2), max_M = depth, allocated = allocated,
+                      max_EM_iter = iterations, test_seq = points, verbose = FALSE)
+        assert_close(as.vector(fit$Allocations[1:3]), c(5, 4, 1),
+                     "zero and split-point allocations")
+        assert_close(sum(fit$Allocations[fit$Terminal_Nodes]), 5,
+                     "exact-event leaf count conservation")
+        leaves <- fit$Terminal_Nodes
+        boundary_leaves <- c(leaves[fit$Left[leaves] == 0],
+                             leaves[fit$Right[leaves] == split],
+                             leaves[fit$Right[leaves] == 2])
+        stopifnot(length(boundary_leaves) == 3)
+        expected <- vapply(seq_along(boundary_leaves), function(i) {
+            j <- boundary_leaves[i]
+            a <- fit$Left[j]; b <- fit$Right[j]
+            conditional_density <- if (prior == 1) 1/(b-a) else
+                base_density(points[i], prior)/(base_survival(a, prior)-base_survival(b, prior))
+            fit$Posterior_Probs[j] * conditional_density
+        }, numeric(1))
+        assert_close(as.vector(fit$Density), c(expected, 0, 0),
+                     "zero, split-point and upper-endpoint densities")
+        stopifnot(fit$Density[2] > 0, fit$Density[3] > 0)
+        boundary_cases <- boundary_cases + 1L
+    }
+
+    # The left-endpoint exception applies only at zero, not at a positive
+    # lower support bound, including when the entire tree is one leaf.
+    positive_lower <- survPT(rbind(c(1, 1), c(2, 2)), prior = prior,
+                             prior_params = params, support = c(0.5, 2),
+                             max_M = 0, test_seq = c(0.5, 2, Inf), verbose = FALSE)
+    stopifnot(positive_lower$Density[1] == 0, positive_lower$Density[2] > 0,
+              positive_lower$Density[3] == 0)
+}
+cat(sprintf("All %d endpoint cases and 3 positive-lower-bound cases passed.\n", boundary_cases))
+
+# Default grids must include finite censoring times, ignore extra columns,
+# and agree with predictions requested explicitly on the same grid.
+grid_cases <- list(
+    all_right = cbind(L = c(1, 2, 7), R = Inf, ignored = 999),
+    mixed = cbind(rbind(c(1, 1), c(2, 2), c(7, Inf)), ignored = 999),
+    finite_right = cbind(rbind(c(1, 5), c(2, Inf)), ignored = 999)
+)
+for (prior in 1:3) for (allocated in 0:1) for (data in grid_cases) {
+    endpoints <- data[, 1:2]
+    expected_grid <- seq(0, max(endpoints[is.finite(endpoints)]), length.out = 200)
+    args <- list(X = data, prior = prior, prior_params = switch(prior, NULL, 1, c(1, 2)),
+                 allocated = allocated, max_M = 3, max_EM_iter = 5, verbose = FALSE)
+    automatic <- do.call(survPT, args)
+    explicit <- do.call(survPT, c(args, list(test_seq = expected_grid)))
+    assert_close(automatic$Test_seq, expected_grid, "default grid finite maximum")
+    assert_close(automatic$Survival_Probs, explicit$Survival_Probs, "default grid survival")
+    assert_close(automatic$Density, explicit$Density, "default grid density")
+}
+custom_grid <- c(0, 0.25, 10)
+custom <- survPT(grid_cases$all_right, test_seq = custom_grid, max_M = 2, verbose = FALSE)
+stopifnot(identical(custom$Test_seq, custom_grid))
+invalid_grid <- tryCatch(survPT(matrix(c(Inf, Inf), 1, 2), verbose = FALSE),
+                         error = identity)
+stopifnot(inherits(invalid_grid, "error"),
+          grepl("without finite observation endpoints", conditionMessage(invalid_grid), fixed = TRUE))
+cat("All 18 default-grid cases, custom-grid and missing-finite-endpoint checks passed.\n")

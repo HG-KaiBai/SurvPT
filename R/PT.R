@@ -29,9 +29,9 @@
 #'   change in terminal-node masses. No convergence flag is returned.
 #' @param verbose Logical; print iteration progress if `TRUE`.
 #' @param test_seq Numeric evaluation points, preferably a sorted finite grid.
-#'   If `NULL`, uses 200 points from `support[1]` to the largest endpoint among
-#'   rows with finite right endpoints. Supply a grid explicitly when no such
-#'   rows exist or when comparing fits.
+#'   If `NULL`, uses 200 points from `support[1]` to the largest finite endpoint
+#'   in the first two columns of `X`, including right-censoring times.
+#'   Supply a grid explicitly when comparing fits.
 #'
 #' @details
 #' Since version 0.2.0, EM allocation probabilities and the returned survival
@@ -43,10 +43,11 @@
 #' Exponential and Weibull terminal intervals retain their infinite tails.
 #' This cutoff does not replace `Inf` in the returned `Right` boundaries.
 #'
-#' Intervals represent `(L, R]`, with exact events treated separately. Exact
-#' events must lie strictly above the root's lower endpoint. Input validation
-#' is incomplete: check numeric types, missing values, endpoint ordering,
-#' support compatibility, and integer iteration controls before fitting.
+#' Intervals represent `(L, R]`, including zero when `L = 0`, with exact events
+#' treated separately. Node allocation and density use `(a, b]`, or `[0, b]`
+#' when `a = 0`; exact events at positive split points belong to the left node.
+#' Input validation is incomplete: check numeric types, missing values,
+#' endpoint ordering, support compatibility, and integer iteration controls.
 #'
 #' Branch masses use a clipped, mode-style update with depth-dependent prior
 #' parameters, not posterior draws or the usual posterior-mean update.
@@ -100,7 +101,12 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
     }
 
     if (is.null(test_seq)){
-        test_seq = seq(support[1], max(X[is.finite(X[,2]),1:2]), length.out = 200)
+        endpoints = X[, 1:2, drop = FALSE]
+        finite_endpoints = endpoints[is.finite(endpoints)]
+        if (length(finite_endpoints) == 0) {
+            stop("Cannot construct a default prediction grid without finite observation endpoints.")
+        }
+        test_seq = seq(support[1], max(finite_endpoints), length.out = 200)
     }
 
     # Handle NULL prior_params for uniform prior

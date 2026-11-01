@@ -21,10 +21,10 @@ with a one-half fallback when the denominator is too small. Child masses are par
 
 ## Conditional base distribution inside terminal intervals
 
-Let `A = (a,b)` be a terminal interval, `p_A` its fitted mass, and `F_0`, `f_0`, `S_0` the base CDF, density, and survival function. For exponential and Weibull bases,
+Let `A = (a,b]` be a terminal interval, using `[0,b]` when `a = 0`, `p_A` its fitted mass, and `F_0`, `f_0`, `S_0` the base CDF, density, and survival function. For exponential and Weibull bases,
 
 \[
-f_A(t)=\frac{f_0(t)\,1\{a<t<b\}}{F_0(b)-F_0(a)},
+f_A(t)=\frac{f_0(t)\,1\{t\in A\}}{F_0(b)-F_0(a)},
 \qquad
 P(T\in(u,v)\mid T\in A)
 =\frac{F_0(\min(v,b))-F_0(\max(u,a))}{F_0(b)-F_0(a)},
@@ -42,7 +42,9 @@ The fitted density and survival function mix these conditional distributions usi
 w_{i,B}=\frac{P(T_i\in B\cap I_i)}{P(T_i\in I_i)}.
 \]
 
-Exact observations are assigned directly by their event times. Probability computations use direct exponential differences and a small-denominator guard; extreme tail parameters can still suffer numerical cancellation or underflow.
+Exact observations are assigned directly by their event times. At a positive split point, both allocation and density use the interval on the left; zero is included in intervals starting at zero. Density is zero at infinite evaluation times. Probability computations use direct exponential differences and a small-denominator guard; extreme tail parameters can still suffer numerical cancellation or underflow.
+
+During EM, the partition, observation intervals and base parameters stay fixed. The implementation caches observation/leaf conditional probabilities and child links, and computes each observation's denominator once per iteration. A node's numerator sums its descendant leaves in the original `terminal_nodes` order. Observation accumulation, branch updates and the convergence calculation retain their original order; no child-total regrouping or prefix-sum subtraction is used. Initialization and prediction are unchanged. The additional dense probability cache is limited to 64 MiB per fit; larger problems and degenerate numerical partitions use the original allocation calculation.
 
 ## Three meanings of truncation
 

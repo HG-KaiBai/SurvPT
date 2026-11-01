@@ -14,9 +14,9 @@
 | Event occurred by inspection at `c` | `0` | `c` |
 | Event not yet observed at inspection at `c` | `c` | `Inf` |
 
-Intervals are interpreted as `(L, R]`, with `L == R` handled separately as an exact event. Endpoint conventions have no effect on continuous interval probabilities, but exact events at a partition boundary belong to the interval on its left.
+Intervals are interpreted as `(L, R]`, including zero when `L = 0`, with `L == R` handled separately as an exact event. Endpoint conventions have no effect on continuous interval probabilities. Both exact-event allocation and density at a positive partition boundary use the interval on its left; nodes starting at zero include zero.
 
-Use finite nonnegative left endpoints and finite right endpoints or positive `Inf`. Require `L <= R`, no missing values, at least one row, and positive exact event times. Input checking is incomplete, so validate these conditions before fitting. There is no delayed-entry or sampling-truncation interface.
+Use finite nonnegative left endpoints and finite right endpoints or positive `Inf`. Require `L <= R`, no missing values, at least one row, and nonnegative exact event times. With a positive lower support bound, exact events must lie strictly above that bound. Input checking is incomplete, so validate these conditions before fitting. There is no delayed-entry or sampling-truncation interface.
 
 ```r
 x <- data.frame(L = c(0, 0.4, 1.1, 2.0),
@@ -57,7 +57,7 @@ The default `support = c(0, Inf)` permits an unbounded time axis, but the **unif
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 
-Supply `test_seq` explicitly for reproducible comparisons. The PT default grid uses only rows with a finite right endpoint, so it may omit late right-censoring times and cannot be constructed from an entirely right-censored sample. For plotting, choose a sorted finite grid. Fitting is unchanged by the choice of evaluation grid.
+Supply `test_seq` explicitly for reproducible comparisons. The PT default grid uses 200 points from the lower support bound to the largest finite endpoint in the first two columns of the data, including right-censoring times. It can therefore be constructed from an entirely right-censored sample with finite censoring times. For plotting, choose a sorted finite grid. Fitting is unchanged by the choice of evaluation grid.
 
 ## Control tree size and iteration
 
