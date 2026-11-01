@@ -16,7 +16,7 @@
 
 Intervals are interpreted as `(L, R]`, including zero when `L = 0`, with `L == R` handled separately as an exact event. Endpoint conventions have no effect on continuous interval probabilities. Both exact-event allocation and density at a positive partition boundary use the interval on its left; nodes starting at zero include zero.
 
-Use finite nonnegative left endpoints and finite right endpoints or positive `Inf`. Require `L <= R`, no missing values, at least one row, and nonnegative exact event times. With a positive lower support bound, exact events must lie strictly above that bound. Input checking is incomplete, so validate these conditions before fitting. There is no delayed-entry or sampling-truncation interface.
+Use finite nonnegative left endpoints and finite right endpoints or positive `Inf`. Require `L <= R`, no missing values, at least one row, and at least one positive finite endpoint. Input checking is incomplete, so validate these conditions before fitting. There is no delayed-entry or sampling-truncation interface.
 
 ```r
 x <- data.frame(L = c(0, 0.4, 1.1, 2.0),
@@ -29,7 +29,7 @@ stopifnot(all(is.finite(x$L)), all(x$L >= 0),
 
 | `prior` | `prior_params` | Base survival function |
 | --- | --- | --- |
-| `1` | `NULL` (ignored) | Uniform within each effective terminal interval |
+| `1` | `NULL` (ignored) | Uniform within finite terminal intervals, plus a point mass at infinity |
 | `2` | positive rate `lambda` | `exp(-lambda * t)` |
 | `3` | `c(lambda, k)`, both positive | `exp(-(lambda * t)^k)` |
 
@@ -53,26 +53,27 @@ These plug-in parameters are held fixed by the tree fit. Their estimation uncert
 
 ## Choose support and evaluation points
 
-The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `1.1 * max(finite observed endpoints)`. Exponential and Weibull PT outputs retain infinite tails. See [Methods](methods.md) for the conditional distributions within terminal intervals.
+All bases require `support = c(0, Inf)`. Ordinary splits use the base distribution truncated to the observed range, and a final split at the largest finite endpoint separates the tail. The **uniform tail is a point mass at infinity**: finite-time density is zero beyond that endpoint, and survival stays at the fitted tail mass. Exponential and Weibull tails retain their continuous conditional distributions. See [Methods](methods.md) for the partition and terminal distributions.
 
-Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
+Finite upper support and positive lower support bounds are not accepted by this tree construction. Keep the original censoring endpoints in the data.
 
 Supply `test_seq` explicitly for reproducible comparisons. The PT default grid uses 200 points from the lower support bound to the largest finite endpoint in the first two columns of the data, including right-censoring times. It can therefore be constructed from an entirely right-censored sample with finite censoring times. For plotting, choose a sorted finite grid. Fitting is unchanged by the choice of evaluation grid.
 
 ## Control tree size and iteration
 
-- `max_M` is the maximum depth, with the root at level zero. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory or exceed integer-shift limits.
+- `max_M` is the maximum ordinary depth, with the root at level zero. The final tail split adds children one level deeper than its parent, even if `max_M = 0`. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory.
 - A node also stops splitting when its **initial allocated count is below one**. The partition is fixed during subsequent updates.
 - `max_EM_iter` and `EM_tol` control allocation iterations.
 - The stopping criterion is the Euclidean norm of the change in terminal masses. It is not a likelihood or parameter-distance criterion.
 - `verbose = TRUE` prints progress. The returned list contains no convergence flag, iteration count, or objective history.
-- PT `allocated = 0` selects the legacy overlap-count initialization and skips EM. It is a different estimator, not a speed setting for the default fit.
+- With a uniform base, every right-censored observation starts entirely in the tail in either allocation mode. In fractional mode, finite interval-censored observations start with overlap-length weights; EM can subsequently move right-censored weight into compatible finite nodes.
+- PT `allocated = 0` uses overlap counts for finite intervals (and all censored intervals for exponential/Weibull bases), and skips EM. It is a different estimator, not a speed setting for the default fit.
 
 ## Interpret the result
 
 | Field | Meaning |
 | --- | --- |
-| `Left`, `Right` | Node interval boundaries; the last right boundary may still be `Inf` even when uniform PT uses a finite effective cutoff |
+| `Left`, `Right` | Node interval boundaries; the final tail starts at the largest finite endpoint and ends at `Inf` |
 | `Level` | Depth of each node; root is zero |
 | `Allocations` | Fractional counts assigned to nodes at the returned iteration |
 | `Posterior_Probs` | Estimated node masses for both internal and terminal nodes |

@@ -12,17 +12,18 @@
 #'   A status column is not used. Missing values are not supported.
 #' @param prior Base distribution: `1` for uniform, `2` for exponential,
 #'   or `3` for Weibull.
-#' @param support Numeric vector `c(lower, upper)` with `lower < upper`.
-#'   The default is `c(0, Inf)`. Use nonnegative time support and observation
-#'   intervals compatible with it. A finite bound is a modeling assumption.
-#' @param max_M Nonnegative integer maximum tree depth; the root is level zero.
+#' @param support Must be `c(0, Inf)` for every base distribution.
+#' @param max_M Nonnegative integer maximum ordinary tree depth; the root is level zero.
 #'   A node also stops splitting if its initial allocated count is below one.
+#'   The rightmost terminal interval is then split once at `largest_obs`, adding
+#'   children one level deeper even when `max_M = 0` or that node stopped early.
 #'   Large depths can require excessive memory; start with a modest value.
 #' @param prior_params `NULL` for uniform (ignored), one positive rate `lambda`
 #'   for exponential, or two positive values `c(lambda, k)` for Weibull.
 #'   The Weibull shape is `k` and scale is `1 / lambda`.
 #' @param allocated `1` (default) for fractional allocation with EM updates;
-#'   `0` for the legacy overlap-count initialization without EM.
+#'   `0` for overlap-count initialization without EM. In either mode, uniform
+#'   right-censored observations are initially assigned entirely to the tail.
 #' @param max_EM_iter Nonnegative integer maximum number of EM updates.
 #'   Zero returns the initialized fit.
 #' @param EM_tol Nonnegative stopping tolerance for the Euclidean norm of the
@@ -38,10 +39,23 @@
 #' function and density use the same selected base distribution conditioned on
 #' each terminal interval. The exponential base survival is `exp(-lambda * t)`;
 #' the Weibull base survival is `exp(-(lambda * t)^k)`.
-#' A uniform terminal interval with an infinite right endpoint is capped at
-#' 1.1 times the largest finite endpoint in the first two columns of `X`.
-#' Exponential and Weibull terminal intervals retain their infinite tails.
-#' This cutoff does not replace `Inf` in the returned `Right` boundaries.
+#'
+#' Every tree starts at `[0, Inf]`. Ordinary splits bisect the selected base
+#' distribution restricted to the current node intersected with
+#' `[0, largest_obs]`, where `largest_obs` is the largest finite endpoint in the
+#' first two columns of `X` and must be positive. Uniform splits are midpoints.
+#' After ordinary splitting, the rightmost interval is split at `largest_obs`.
+#' If its depth is `m`, both new branch parameters are `0.5 * (m + 1)^2`.
+#'
+#' The uniform tail is a point mass at infinity: it contributes no finite-time
+#' density, and survival beyond `largest_obs` stays at the fitted tail mass.
+#' Its continuous density therefore integrates to one minus that mass.
+#' Exponential and Weibull tails use their conditional base distributions.
+#' Survival is zero at `Inf` for all bases. Uniform initialization assigns every
+#' right-censored observation entirely to the tail, regardless of its censoring
+#' time. Finite interval-censored observations use overlap lengths when
+#' `allocated = 1`. Subsequent EM steps may redistribute right-censored
+#' observations into compatible finite nodes using the fitted distribution.
 #'
 #' Intervals represent `(L, R]`, including zero when `L = 0`, with exact events
 #' treated separately. Node allocation and density use `(a, b]`, or `[0, b]`
@@ -96,8 +110,9 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
     if (prior == 3 && (length(prior_params) != 2 || any(prior_params <= 0))) {
         stop("Please provide two positive prior parameters for Weibull prior.")
     }
-    if (! is.numeric(support) || length(support) != 2 || support[1] >= support[2]) {
-        stop("Invalid input support.")
+    if (!is.numeric(support) || length(support) != 2 || anyNA(support) ||
+        support[1] != 0 || support[2] != Inf) {
+        stop("support must be c(0, Inf) for the observed-range tree.")
     }
 
     if (is.null(test_seq)){

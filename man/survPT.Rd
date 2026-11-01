@@ -32,12 +32,12 @@ Supply a grid explicitly when comparing fits.}
 \item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
 or \code{3} for Weibull.}
 
-\item{support}{Numeric vector \code{c(lower, upper)} with \code{lower < upper}.
-The default is \code{c(0, Inf)}. Use nonnegative time support and observation
-intervals compatible with it. A finite bound is a modeling assumption.}
+\item{support}{Must be \code{c(0, Inf)} for every base distribution.}
 
-\item{max_M}{Nonnegative integer maximum tree depth; the root is level zero.
+\item{max_M}{Nonnegative integer maximum ordinary tree depth; the root is level zero.
 A node also stops splitting if its initial allocated count is below one.
+The rightmost terminal interval is then split once at \code{largest_obs}, adding
+children one level deeper even when \code{max_M = 0} or that node stopped early.
 Large depths can require excessive memory; start with a modest value.}
 
 \item{prior_params}{\code{NULL} for uniform (ignored), one positive rate \code{lambda}
@@ -45,7 +45,8 @@ for exponential, or two positive values \code{c(lambda, k)} for Weibull.
 The Weibull shape is \code{k} and scale is \code{1 / lambda}.}
 
 \item{allocated}{\code{1} (default) for fractional allocation with EM updates;
-\code{0} for the legacy overlap-count initialization without EM.}
+\code{0} for overlap-count initialization without EM. In either mode, uniform
+right-censored observations are initially assigned entirely to the tail.}
 
 \item{max_EM_iter}{Nonnegative integer maximum number of EM updates.
 Zero returns the initialized fit.}
@@ -83,10 +84,23 @@ Since version 0.2.0, EM allocation probabilities and the returned survival
 function and density use the same selected base distribution conditioned on
 each terminal interval. The exponential base survival is \code{exp(-lambda * t)};
 the Weibull base survival is \code{exp(-(lambda * t)^k)}.
-A uniform terminal interval with an infinite right endpoint is capped at
-1.1 times the largest finite endpoint in the first two columns of \code{X}.
-Exponential and Weibull terminal intervals retain their infinite tails.
-This cutoff does not replace \code{Inf} in the returned \code{Right} boundaries.
+
+Every tree starts at \verb{[0, Inf]}. Ordinary splits bisect the selected base
+distribution restricted to the current node intersected with
+\verb{[0, largest_obs]}, where \code{largest_obs} is the largest finite endpoint in the
+first two columns of \code{X} and must be positive. Uniform splits are midpoints.
+After ordinary splitting, the rightmost interval is split at \code{largest_obs}.
+If its depth is \code{m}, both new branch parameters are \code{0.5 * (m + 1)^2}.
+
+The uniform tail is a point mass at infinity: it contributes no finite-time
+density, and survival beyond \code{largest_obs} stays at the fitted tail mass.
+Its continuous density therefore integrates to one minus that mass.
+Exponential and Weibull tails use their conditional base distributions.
+Survival is zero at \code{Inf} for all bases. Uniform initialization assigns every
+right-censored observation entirely to the tail, regardless of its censoring
+time. Finite interval-censored observations use overlap lengths when
+\code{allocated = 1}. Subsequent EM steps may redistribute right-censored
+observations into compatible finite nodes using the fitted distribution.
 
 Intervals represent \verb{(L, R]}, including zero when \code{L = 0}, with exact events
 treated separately. Node allocation and density use \verb{(a, b]}, or \verb{[0, b]}

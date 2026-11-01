@@ -16,6 +16,13 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
     X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
 
     n = X.n_rows;
+    if (X.n_cols < 2 || n == 0) {
+        Rcpp::stop("X must contain observations with two endpoint columns.");
+    }
+    if (support.n_elem != 2 || support(0) != 0.0 || support(1) != arma::datum::inf) {
+        Rcpp::stop("support must be c(0, Inf) for the observed-range tree.");
+    }
+    if (max_M < 0) Rcpp::stop("max_M must be nonnegative.");
     if (max_M <= 10){
         NODES_NUM = (1 << (max_M + 1)) - 1; // number of nodes for complete tree
     } else {
@@ -31,6 +38,9 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
                 largest_obs = v;
             }
         }
+    }
+    if (largest_obs <= 0.0) {
+        Rcpp::stop("The tree requires a positive finite observation endpoint.");
     }
 
     // initialize other member variables
@@ -69,99 +79,92 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
 }
 
 void PT::init() {
-    for (int i = 0; i < NODES_NUM; i++) {
+    for (int i = 0; i <= nodes_used; i++) {
         int level = node_levels(i);
 
         double split_point = choose_split(level, left_bound(i), right_bound(i));
         if (split_point < 0 || n_obs_allocated(i) < 1) {
-        // if (split_point < 0) {
             terminal_nodes.insert_rows(terminal_nodes.n_rows, vec({(double)i}));
             continue; // no split
         }
-        int left_child = ++nodes_used;
-        int right_child = ++nodes_used;
-        if (left_child >= NODES_NUM || right_child >= NODES_NUM) {
-            update_tree_size();
-        }
-        left_bound(left_child) = left_bound(i);
-        right_bound(left_child) = split_point;
-
-        left_bound(right_child) = split_point;
-        right_bound(right_child) = right_bound(i);
-
-        node_levels(left_child) = level + 1;
-        node_levels(right_child) = level + 1;
-
-        parent_nodes(left_child) = i;
-        parent_nodes(right_child) = i;
-
-        // prior alpha values
-        alpha(left_child) = init_alpha(level + 1, left_bound(left_child), right_bound(left_child));
-        alpha(right_child) = init_alpha(level + 1, left_bound(right_child), right_bound(right_child));
-
-        // allocate observations to children
-        init_allocations(i, left_child, right_child);
-
-        // posterior probabilities (initially set to prior probabilities)
-        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
-        double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
-        if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, 0.0), 1.0);
-            posterior_probs(left_child) = left_prob * posterior_probs(i);
-            posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
-        } else {
-            posterior_probs(left_child) = 0.5 * posterior_probs(i);
-            posterior_probs(right_child) = 0.5 * posterior_probs(i);
-        }
+        split_node(i, split_point);
     }
 
-    // remove terminal node entries that reference nodes beyond the current nodes_used
-    if (terminal_nodes.n_rows > 0) {
-        arma::uvec keep = arma::find(terminal_nodes <= static_cast<double>(nodes_used));
-        if (keep.n_elem < terminal_nodes.n_rows) {
-            terminal_nodes = terminal_nodes.elem(keep);
+    // Always split the final interval, including when it stopped early for
+    // low counts or max_M is zero. Its children form one additional layer.
+    for (uword t = 0; t < terminal_nodes.n_elem; ++t) {
+        const int node = static_cast<int>(terminal_nodes(t));
+        if (!arma::is_finite(right_bound(node))) {
+            terminal_nodes.shed_row(t);
+            split_node(node, largest_obs);
+            terminal_nodes.insert_rows(terminal_nodes.n_rows,
+                                       vec({double(nodes_used - 1), double(nodes_used)}));
+            break;
         }
     }
 }
 
+void PT::split_node(int i, double split_point) {
+    const int level = node_levels(i);
+    int left_child = ++nodes_used;
+    int right_child = ++nodes_used;
+    if (left_child >= NODES_NUM || right_child >= NODES_NUM) {
+        update_tree_size();
+    }
+    left_bound(left_child) = left_bound(i);
+    right_bound(left_child) = split_point;
+
+    left_bound(right_child) = split_point;
+    right_bound(right_child) = right_bound(i);
+
+    node_levels(left_child) = level + 1;
+    node_levels(right_child) = level + 1;
+
+    parent_nodes(left_child) = i;
+    parent_nodes(right_child) = i;
+
+    // The final tail split uses the same depth rule as ordinary splits.
+    alpha(left_child) = init_alpha(level + 1, left_bound(left_child), right_bound(left_child));
+    alpha(right_child) = init_alpha(level + 1, left_bound(right_child), right_bound(right_child));
+
+    init_allocations(i, left_child, right_child);
+
+    double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
+    double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
+    if (total > SMALL_VALUE) {
+        double left_prob = min(max(left_count / total, 0.0), 1.0);
+        posterior_probs(left_child) = left_prob * posterior_probs(i);
+        posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
+    } else {
+        posterior_probs(left_child) = 0.5 * posterior_probs(i);
+        posterior_probs(right_child) = 0.5 * posterior_probs(i);
+    }
+}
+
 double PT::choose_split(int level, double left, double right) {
-    if (level == max_M) {
+    if (level >= max_M) {
         return -1.0; // no split at the last level
     }
+    // The node itself can extend to infinity; only its splitting distribution
+    // is truncated to the observed range.
+    right = min(right, largest_obs);
+    if (right <= left) return -1.0;
+    double split = -1.0;
     if (prior == 1) { // Uniform
-        if (arma::is_finite(right)){
-            return (left + right) / 2.0; // midpoint split
-        } else {
-            return left + (1.1 * largest_obs - support(0)) / (1 << (level + 1)); // exponential split
-        }
-    } else if (prior == 2) { // Exponential
+        split = left + (right - left) / 2.0;
+    } else if (prior == 2 || prior == 3) {
         const double lambda = prior_params(0);
-        if (arma::is_finite(right)){
-            double cdf_left = 1 - exp(-lambda * left);
-            double cdf_right = 1 - exp(-lambda * right);
-            double split_cdf = 0.5 * (cdf_right + cdf_left);
-            return -log(1 - split_cdf) / lambda;
-        } else {
-            double cdf_left = 1 - exp(-lambda * left);
-            double split_cdf = 0.5 * (1 + cdf_left);
-            return -log(1 - split_cdf) / lambda;
-        }
-    } else if (prior == 3) { // Weibull
-        const double lambda = prior_params(0);
-        const double k = prior_params(1);
-        if (arma::is_finite(right)){
-            double cdf_left = 1 - exp(-pow(lambda * left, k));
-            double cdf_right = 1 - exp(-pow(lambda * right, k));
-            double split_cdf =  0.5 * (cdf_right + cdf_left);
-            return pow(-log(1 - split_cdf), 1.0 / k) / lambda;
-        } else {
-            double cdf_left = 1 - exp(-pow(lambda * left, k));
-            double split_cdf = 0.5 * (1 + cdf_left);
-            return pow(-log(1 - split_cdf), 1.0 / k) / lambda;
-        }
+        const double h_left = base_cumulative_hazard(left);
+        const double h_width = base_cumulative_hazard(right) - h_left;
+        // -log((1 + exp(-h_width))/2), stable even for tiny interval mass.
+        const double h_increment = -log1p(0.5 * expm1(-h_width));
+        split = prior == 2 ? left + h_increment / lambda :
+            pow(h_left + h_increment, 1.0 / prior_params(1)) / lambda;
     } else {
         Rcpp::stop("Invalid prior type.");
     }
+    // Stop if floating-point precision cannot represent an interior median.
+    return arma::is_finite(split) && split > left && split < right ? split : -1.0;
 }
 
 double PT::init_alpha(int level, double left, double right) {
@@ -232,7 +235,14 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
             }
         } else if (allocated == 0) {
             // hard allocation for MW method
-            if (left_obs == right_obs) {
+            if (prior == 1 && right_obs == arma::datum::inf) {
+                // Uniform right-censored observations start entirely in the
+                // tail, including when EM is disabled.
+                if (right_bound(right_child) == arma::datum::inf) {
+                    in_node_obs(right_child, obs) = 1.0;
+                    n_obs_allocated(right_child) += 1.0;
+                }
+            } else if (left_obs == right_obs) {
                 if ((left_obs > left_bound(left_child) ||
                      (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
                     right_obs <= right_bound(left_child)) {
@@ -272,54 +282,19 @@ double PT::init_individual_allocation(double left_obs, double right_obs, double 
     double joint_left = max(left_obs, left_node);
     double joint_right = min(right_obs, right_node);
     if (prior == 1) { // Uniform
-        double width_obs;
-        if (arma::is_finite(right_obs)){
-            width_obs = right_obs - left_obs;
-        } else {
-            width_obs = 1.1 * largest_obs - left_obs; // arbitrary large width for right-censored
+        // All right-censored observations start at infinity. Keep their
+        // overlap markers in init_allocations so EM can later redistribute
+        // them into compatible finite nodes, despite zero initial weights.
+        if (right_obs == arma::datum::inf) {
+            return right_node == arma::datum::inf ? 1.0 : 0.0;
         }
-        double joint_width;
-        if (arma::is_finite(joint_right)){
-            joint_width = joint_right - joint_left;
-        } else {
-            joint_width = 1.1 * largest_obs - joint_left; // arbitrary large width for right-censored
-        }
+        const double width_obs = right_obs - left_obs;
+        const double joint_width = max(joint_right - joint_left, 0.0);
         if (width_obs > SMALL_VALUE) {
             return joint_width / width_obs;
         }
-    } else if (prior == 2) { // Exponential
-        const double lambda = prior_params(0);
-        double numerator, denominator;
-        if (arma::is_finite(joint_right)) {
-            numerator = exp(-lambda * joint_left) - exp(-lambda * joint_right);
-        } else {
-            numerator = exp(-lambda * joint_left);
-        }
-        if (arma::is_finite(right_obs)) {
-            denominator = exp(-lambda * left_obs) - exp(-lambda * right_obs);
-        } else {
-            denominator = exp(-lambda * left_obs);
-        }
-        if (denominator > SMALL_VALUE) {
-            return numerator / denominator;
-        }
-    } else if (prior == 3) { // Weibull
-        const double lambda = prior_params(0);
-        const double k = prior_params(1);
-        double numerator, denominator;
-        if (arma::is_finite(joint_right)) {
-            numerator = exp(-pow(lambda * joint_left, k)) - exp(-pow(lambda * joint_right, k));
-        } else {
-            numerator = exp(-pow(lambda * joint_left, k));
-        }
-        if (arma::is_finite(right_obs)) {
-            denominator = exp(-pow(lambda * left_obs, k)) - exp(-pow(lambda * right_obs, k));
-        } else {
-            denominator = exp(-pow(lambda * left_obs, k));
-        }
-        if (denominator > SMALL_VALUE) {
-            return numerator / denominator;
-        }
+    } else if (prior == 2 || prior == 3) {
+        return terminal_probability(left_node, right_node, left_obs, right_obs);
     } else {
         Rcpp::stop("Invalid prior type.");
     }
@@ -488,10 +463,6 @@ void PT::prepare_em_cache() {
             right_bound(left) != left_bound(right) || right_bound(right) != right_bound(node) ||
             right_bound(left) <= left_bound(node) || right_bound(left) >= right_bound(node))) return;
     }
-    for (uword k = 0; k < terminal_indices.n_elem; ++k) {
-        const uword leaf = terminal_indices(k);
-        if (terminal_right_bound(right_bound(leaf)) <= left_bound(leaf)) return;
-    }
 
     // Bound the additional dense probability cache to 64 MiB per fit.
     const uword max_cache_elements = (64u * 1024u * 1024u) / sizeof(double);
@@ -603,62 +574,58 @@ void PT::update_tree_size() {
 }
 
 
-double PT::terminal_right_bound(double right) const {
-    if (prior == 1 && !arma::is_finite(right)) {
-        return arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
-    }
-    return right;
-}
-
-double PT::base_survival(double x) const {
+double PT::base_cumulative_hazard(double x) const {
     if (prior == 2) {
-        return exp(-prior_params(0) * x);
+        return prior_params(0) * x;
     } else if (prior == 3) {
-        return exp(-pow(prior_params(0) * x, prior_params(1)));
-    }
-    Rcpp::stop("Invalid prior type.");
-    return 0.0;
-}
-
-double PT::base_density(double x) const {
-    const double lambda = prior_params(0);
-    if (prior == 2) {
-        return lambda * exp(-lambda * x);
-    } else if (prior == 3) {
-        const double k = prior_params(1);
-        return k * lambda * pow(lambda * x, k - 1.0) * exp(-pow(lambda * x, k));
+        return pow(prior_params(0) * x, prior_params(1));
     }
     Rcpp::stop("Invalid prior type.");
     return 0.0;
 }
 
 double PT::terminal_probability(double left, double right, double a, double b) const {
-    b = terminal_right_bound(b);
     const double lo = max(left, a);
     const double hi = min(right, b);
     if (lo >= hi) {
         return 0.0;
     }
+    if (prior == 1 && !arma::is_finite(b)) {
+        // The uniform tail is a point mass at infinity. Finite observation
+        // intervals receive none of it; right-censored intervals include it.
+        return right == arma::datum::inf ? 1.0 : 0.0;
+    }
 
     // Conditional continuous probability; endpoint inclusion does not change it.
-    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
-    const double numerator = prior == 1 ? hi - lo : base_survival(lo) - base_survival(hi);
-    if (denom > SMALL_VALUE) {
+    if (prior == 1) return (hi - lo) / (b - a);
+    const double h_a = base_cumulative_hazard(a);
+    const double h_lo = base_cumulative_hazard(lo);
+    const double denom = -expm1(h_a - base_cumulative_hazard(b));
+    const double numerator = exp(h_a - h_lo) *
+        -expm1(h_lo - base_cumulative_hazard(hi));
+    if (denom > 0.0) {
         return min(max(numerator / denom, 0.0), 1.0);
     }
     return 0.0;
 }
 
 double PT::terminal_density(double t, double a, double b) const {
-    b = terminal_right_bound(b);
     // Match exact-event allocation: (a, b], or [0, b] when a is zero.
     // Infinity is not an event time, even for an unbounded terminal interval.
     if (std::isinf(t) || t < a || t > b || (t == a && a != 0.0)) {
         return 0.0;
     }
-    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
-    if (denom > SMALL_VALUE) {
-        return prior == 1 ? 1.0 / denom : base_density(t) / denom;
+    if (prior == 1) return arma::is_finite(b) ? 1.0 / (b - a) : 0.0;
+    const double h_a = base_cumulative_hazard(a);
+    const double denom = -expm1(h_a - base_cumulative_hazard(b));
+    if (denom > 0.0) {
+        const double lambda = prior_params(0);
+        double log_hazard = log(lambda);
+        if (prior == 3 && prior_params(1) != 1.0) {
+            const double k = prior_params(1);
+            log_hazard += log(k) + (k - 1.0) * log(lambda * t);
+        }
+        return exp(log_hazard + h_a - base_cumulative_hazard(t) - log(denom));
     }
     return 0.0;
 }

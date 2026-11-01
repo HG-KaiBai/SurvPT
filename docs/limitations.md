@@ -9,12 +9,11 @@
 | `survPT()` returns point estimates only | No built-in confidence bands, posterior draws, or convergence flag |
 | Inputs are univariate with no covariates | No multivariate joint survival or regression interface |
 | No sampling-truncation or delayed-entry arguments | Do not treat the `support` setting as a delayed-entry correction |
-| Uniform PT uses a data-dependent upper cutoff | Its estimated survival becomes zero beyond that cutoff |
+| Uniform PT places its tail mass at infinity | Survival stays at that mass beyond the largest finite endpoint; finite-time density integrates to one minus the tail mass |
 | Partition is fixed after initialization | EM does not revisit early stopping or split locations |
-| Direct exponentials and CDF differences are used | Extreme rates, shapes, or tail locations can lose precision |
+| Cumulative-hazard calculations still use finite machine precision | Extreme rates, shapes, or tail locations can overflow or lose precision |
 | Input checks are incomplete | Validate missing values, numeric types, interval ordering, support, and iteration controls yourself |
-| A positive lower support bound is excluded from node intervals | Exact events must lie strictly above a positive lower bound; zero is included when the lower bound is zero |
-| Finite support and observation bounds can disagree during initialization | Use a justified support and encode intervals consistently; investigate any allocation-sum diagnostic |
+| All bases require root support `[0, Inf]` | Finite upper bounds and positive lower support bounds are not accepted |
 
 The field name `Posterior_Probs` is historical. Read [Methods](methods.md) for the actual PT branch-mass update.
 
@@ -39,7 +38,7 @@ These limitations are documented to distinguish observed software behavior from 
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 
-**A uniform curve reaches zero unexpectedly early.** Inspect the largest finite endpoint and the factor-1.1 cutoff. Use a scientifically appropriate exponential or Weibull base if an unbounded PT tail is required.
+**A uniform curve stays above zero beyond the data.** This is the fitted point mass at infinity. Its finite-time density is zero beyond the largest finite endpoint. Exponential and Weibull bases instead have continuous tails.
 
 **A historical simulation fails on Windows.** Scripts using `parallel::mclapply()` with multiple forked workers require adaptation. Start serially with one worker, or implement and validate a socket-cluster workflow.
 

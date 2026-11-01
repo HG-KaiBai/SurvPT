@@ -3,3 +3,8 @@
 ^\.codex$
 ^\.vscode$
 ^SurvPT_[0-9.]+\.tar\.gz$
+^SurvPT_[0-9.]+\.zip$
+^SurvPT\.Rcheck$
+^output$
+^results$
+^tmp$

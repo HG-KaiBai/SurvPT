@@ -1,28 +1,29 @@
 # Historical interactive comparison; see Examples/README.md before running.
 # Requires devtools, interval and spBayesSurv 1.1.9.
 # Optional fiducial plots require constructing the currently commented-out fid.
-devtools::load_all()
+devtools::load_all(".", compile = TRUE)
 library(interval)
 library(spBayesSurv)
 
 K = 1
 Lambda = 0.12
 n = 200
-test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
+#test_data = data_rc(seed = 12, n = n, K = K, Lambda = Lambda, q = 0.3)
+test_data = fiducial_3(234, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
 
 # Both PT fits and the later comparisons use the same finite observation grid.
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
 x = seq(0, max(obs.mat), length.out = 201)
-true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
-
+#true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
+true.surv =  pgamma(x, 2, 1, lower.tail = FALSE)
 cat("Calling SurvPT with uniform prior...\n")
 result_unif <- survPT(test_data, test_seq = x, prior = 1,
-                      max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+                      max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 
 cat("Calling SurvPT with exponential prior...\n")
 result_exp <- survPT(test_data, test_seq = x, prior = 2, prior_params = exp_par,
-                     max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+                     max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 
 # Retain the original survival SSE and probability-increment RMSE comparisons.
 pt_results <- list(Unif = result_unif, Exp = result_exp)

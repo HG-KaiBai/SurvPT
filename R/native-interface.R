@@ -13,11 +13,13 @@
 #'   columns; see \code{\link{survPT}()} for supported observation encodings.
 #' @param test_seq Numeric evaluation points.
 #' @param prior Integer base selector: `1` uniform, `2` exponential, `3` Weibull.
-#' @param support Numeric vector of lower and upper support bounds.
-#' @param max_M Nonnegative integer maximum tree depth.
+#' @param support Must be `c(0, Inf)` for every base distribution.
+#' @param max_M Nonnegative integer maximum ordinary tree depth, before the
+#'   additional split of the rightmost interval at the largest finite endpoint.
 #' @param prior_params Numeric base parameters: one rate for exponential,
 #'   `c(lambda, k)` for Weibull, or an ignored numeric placeholder for uniform.
-#' @param allocated `1` for EM allocation or `0` for legacy overlap counts.
+#' @param allocated `1` for EM allocation or `0` for overlap counts without EM.
+#'   Uniform right-censored observations start entirely in the tail in either mode.
 #' @param max_EM_iter Nonnegative integer maximum number of EM updates.
 #' @param EM_tol Nonnegative tolerance for terminal-mass changes.
 #' @param verbose Logical progress-output flag.

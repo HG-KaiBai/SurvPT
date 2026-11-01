@@ -17,7 +17,7 @@ public:
     vec test_seq; // test sequence
     int prior; // prior type (1: Uniform, 2: Exponential, 3: Weibull)
     vec support; // support domain
-    int max_M; // maximum level of tree
+    int max_M; // maximum ordinary depth, before the final tail split
     int NODES_NUM; // total number of nodes in the tree
     vec prior_params; // prior parameters (only for Exponential and Weibull)
     int n; // total sample size
@@ -45,6 +45,7 @@ public:
     List output(); // output results
 
 private:
+    void split_node(int parent, double split_point);
     void prepare_em_cache();
     void update_observation_probabilities();
     double cached_individual_allocation(arma::uword obs, int node) const;
@@ -55,9 +56,7 @@ private:
     std::vector<std::vector<arma::uword>> node_terminal_indices;
     mat observation_leaf_probabilities;
     vec observation_probabilities;
-    double terminal_right_bound(double right) const;
-    double base_survival(double x) const;
-    double base_density(double x) const;
+    double base_cumulative_hazard(double x) const;
     double terminal_probability(double left, double right, double a, double b) const;
     double terminal_density(double t, double a, double b) const;
     int nodes_used; // current idx of the last used node

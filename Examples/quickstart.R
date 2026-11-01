@@ -1,4 +1,4 @@
-# SurvPT 0.2.0: small, reproducible examples using only installed dependencies.
+# SurvPT 0.2.1: small, reproducible examples using only installed dependencies.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)
@@ -30,7 +30,7 @@ checks <- do.call(rbind, lapply(names(fits), function(name) {
 
 print(checks, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
-cat("Uniform PT has a finite cutoff; exponential and Weibull bases retain unbounded tails.\n")
+cat("Uniform PT retains a point mass at infinity; exponential and Weibull tails are continuous.\n")
 
 # Optional plotting in an interactive R session:
 if (interactive()) {

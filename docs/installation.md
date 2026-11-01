@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.2.0.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.2.1.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.2.0.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.2.1.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -62,5 +62,7 @@ citation("SurvPT")
 Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Examples/quickstart.R`. It needs only the installed package and standard R packages and prints a compact validation summary.
 
 ## Reproducibility
+
+Version 0.2.1 changes the partition to observed-range median splits followed by a final tail split. All bases require `support = c(0, Inf)`. The uniform tail is a point mass at infinity, and uniform right-censored observations start entirely in that tail before EM. Refit earlier analyses when adopting these changes; see [Methods](methods.md).
 
 Version 0.2.0 changes censored-data allocations for exponential and Weibull PT bases and for the uniform infinite terminal interval. Refit analyses made with 0.1.0 instead of assuming identical estimates. Record `packageVersion("SurvPT")`, `sessionInfo()`, the chosen support, base parameters, stopping controls, and source commit or archive checksum.

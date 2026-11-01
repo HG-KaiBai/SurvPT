@@ -16,14 +16,16 @@ columns; see \code{\link{survPT}()} for supported observation encodings.}
 
 \item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull.}
 
-\item{support}{Numeric vector of lower and upper support bounds.}
+\item{support}{Must be \code{c(0, Inf)} for every base distribution.}
 
-\item{max_M}{Nonnegative integer maximum tree depth.}
+\item{max_M}{Nonnegative integer maximum ordinary tree depth, before the
+additional split of the rightmost interval at the largest finite endpoint.}
 
 \item{prior_params}{Numeric base parameters: one rate for exponential,
 \code{c(lambda, k)} for Weibull, or an ignored numeric placeholder for uniform.}
 
-\item{allocated}{\code{1} for EM allocation or \code{0} for legacy overlap counts.}
+\item{allocated}{\code{1} for EM allocation or \code{0} for overlap counts without EM.
+Uniform right-censored observations start entirely in the tail in either mode.}
 
 \item{max_EM_iter}{Nonnegative integer maximum number of EM updates.}
 

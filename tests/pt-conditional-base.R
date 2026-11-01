@@ -31,7 +31,6 @@ base_density <- function(x, prior) {
 leaf_bounds <- function(fit, j, prior, cap) {
     a <- fit$Left[j]
     b <- fit$Right[j]
-    if (prior == 1 && is.infinite(b)) b <- cap
     c(a, b)
 }
 reference_mass <- function(fit, left, right, prior, cap) {
@@ -40,6 +39,8 @@ reference_mass <- function(fit, left, right, prior, cap) {
         a <- bounds[1]; b <- bounds[2]
         lo <- max(left, a); hi <- min(right, b)
         if (lo >= hi) return(0)
+        if (prior == 1 && is.infinite(b))
+            return(fit$Posterior_Probs[j] * as.numeric(right == Inf))
         fraction <- if (prior == 1) (hi-lo)/(b-a) else
             (base_survival(lo, prior)-base_survival(hi, prior)) /
             (base_survival(a, prior)-base_survival(b, prior))
@@ -51,6 +52,7 @@ reference_density <- function(fit, t, prior, cap) {
         bounds <- leaf_bounds(fit, j, prior, cap)
         a <- bounds[1]; b <- bounds[2]
         if (!is.finite(t) || t < a || t > b || (t == a && a != 0)) return(0)
+        if (prior == 1 && is.infinite(b)) return(0)
         density <- if (prior == 1) 1/(b-a) else
             base_density(t, prior)/(base_survival(a, prior)-base_survival(b, prior))
         fit$Posterior_Probs[j] * density
@@ -71,10 +73,10 @@ reference_allocations <- function(fit, data, prior, cap) {
 
 cases <- 0L
 for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
-    support <- c(0, if (finite) 4 else Inf)
+    support <- c(0, Inf)
     data <- observations
-    if (finite) data[is.infinite(data[, 2]), 2] <- support[2]
-    cap <- 1.1 * max(data[is.finite(data)])
+    if (finite) data[is.infinite(data[, 2]), 2] <- 4
+    cap <- max(data[is.finite(data)])
     points <- sort(unique(c(-1, seq(0, 5, length.out = 101), cap, cap+1, 10, Inf)))
     fits <- lapply(c(0, 1, 2, 20), function(iterations)
         fit_pt(data, prior, support, depth, iterations, points))
@@ -118,14 +120,18 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
     final <- fits[[4]]
     density_integral <- sum(vapply(final$Terminal_Nodes, function(j) {
         bounds <- leaf_bounds(final, j, prior, cap)
+        if (prior == 1 && is.infinite(bounds[2])) return(0)
         integrate(function(t) as.vector(fit_pt(data, prior, support, depth, 20, t)$Density),
                   bounds[1], bounds[2], rel.tol = 1e-7)$value
     }, numeric(1)))
-    assert_close(density_integral, 1, paste(label, "density integral"), 1e-6)
+    tail_mass <- sum(final$Posterior_Probs[final$Terminal_Nodes[
+        is.infinite(final$Right[final$Terminal_Nodes])]])
+    expected_integral <- if (prior == 1) 1-tail_mass else 1
+    assert_close(density_integral, expected_integral, paste(label, "density integral"), 1e-6)
 
     if (!finite) {
         s_far <- as.vector(final$Survival_Probs)[match(10, points)]
-        if (prior == 1) stopifnot(s_far == 0)
+        if (prior == 1) assert_close(s_far, tail_mass, "uniform survival plateau")
         else stopifnot(s_far > 0)
     }
     if (depth == 6) stopifnot(any(final$Level[final$Terminal_Nodes] < depth))
@@ -133,15 +139,18 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
     cat(label, "passed\n")
 }
 
-# A tree truncated at the root must retain its whole mass through EM.
+# With no ordinary splits, the root still receives the final split at the cap.
 for (prior in 1:3) {
     data <- observations
     points <- c(0, 0.5, 2, 10, Inf)
     before <- fit_pt(data, prior, c(0, Inf), 0, 0, points)
     after <- fit_pt(data, prior, c(0, Inf), 0, 5, points)
-    assert_close(after$Survival_Probs, before$Survival_Probs, "root-only survival")
-    assert_close(after$Density, before$Density, "root-only density")
-    assert_close(after$Posterior_Probs, 1, "root-only mass")
+    for (fit in list(before, after)) {
+        stopifnot(length(fit$Left) == 3, all(fit$Level == c(0, 1, 1)),
+                  fit$Right[2] == 3, fit$Left[3] == 3, fit$Right[3] == Inf)
+        assert_close(sum(fit$Posterior_Probs[fit$Terminal_Nodes]), 1, "tail-only mass")
+        assert_close(sum(fit$Allocations[fit$Terminal_Nodes]), nrow(data), "tail-only counts")
+    }
 }
 
 # Exact observations require no redistribution, regardless of the base shape.
@@ -152,7 +161,7 @@ for (prior in 1:3) {
     assert_close(after$Allocations, before$Allocations, "exact observations")
     assert_close(after$Posterior_Probs, before$Posterior_Probs, "exact observation masses")
 }
-cat(sprintf("All %d mixed-censoring cases, 3 root-only cases and 3 exact-data cases passed.\n", cases))
+cat(sprintf("All %d mixed-censoring cases, 3 tail-only cases and 3 exact-data cases passed.\n", cases))
 
 # Zero belongs to the first leaf. Positive split points and the finite upper
 # endpoint belong to the leaf on their left, for allocation and density alike.
@@ -160,7 +169,7 @@ boundary_cases <- 0L
 for (prior in 1:3) {
     params <- switch(prior, NULL, 1, c(1, 2))
     probe <- survPT(rbind(c(0, 0), c(2, 2)), prior = prior, prior_params = params,
-                    support = c(0, 2), max_M = 1, max_EM_iter = 0,
+                    max_M = 1, max_EM_iter = 0,
                     test_seq = c(0, 2), verbose = FALSE)
     split <- as.numeric(probe$Right[2])
     exact_times <- c(0, 0, split, split, 2)
@@ -169,7 +178,7 @@ for (prior in 1:3) {
 
     for (allocated in 0:1) for (depth in c(1, 3)) for (iterations in c(0, 5)) {
         fit <- survPT(data, prior = prior, prior_params = params,
-                      support = c(0, 2), max_M = depth, allocated = allocated,
+                      max_M = depth, allocated = allocated,
                       max_EM_iter = iterations, test_seq = points, verbose = FALSE)
         assert_close(as.vector(fit$Allocations[1:3]), c(5, 4, 1),
                      "zero and split-point allocations")
@@ -187,21 +196,16 @@ for (prior in 1:3) {
                 base_density(points[i], prior)/(base_survival(a, prior)-base_survival(b, prior))
             fit$Posterior_Probs[j] * conditional_density
         }, numeric(1))
-        assert_close(as.vector(fit$Density), c(expected, 0, 0),
+        expected_tail <- vapply(points[4:5], function(t)
+            reference_density(fit, t, prior, 2), numeric(1))
+        assert_close(as.vector(fit$Density), c(expected, expected_tail),
                      "zero, split-point and upper-endpoint densities")
         stopifnot(fit$Density[2] > 0, fit$Density[3] > 0)
         boundary_cases <- boundary_cases + 1L
     }
 
-    # The left-endpoint exception applies only at zero, not at a positive
-    # lower support bound, including when the entire tree is one leaf.
-    positive_lower <- survPT(rbind(c(1, 1), c(2, 2)), prior = prior,
-                             prior_params = params, support = c(0.5, 2),
-                             max_M = 0, test_seq = c(0.5, 2, Inf), verbose = FALSE)
-    stopifnot(positive_lower$Density[1] == 0, positive_lower$Density[2] > 0,
-              positive_lower$Density[3] == 0)
 }
-cat(sprintf("All %d endpoint cases and 3 positive-lower-bound cases passed.\n", boundary_cases))
+cat(sprintf("All %d endpoint cases passed.\n", boundary_cases))
 
 # Default grids must include finite censoring times, ignore extra columns,
 # and agree with predictions requested explicitly on the same grid.
