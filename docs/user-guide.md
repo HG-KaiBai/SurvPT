@@ -62,12 +62,13 @@ Supply `test_seq` explicitly for reproducible comparisons. The PT default grid u
 ## Control tree size and iteration
 
 - `max_M` is the maximum ordinary depth, with the root at level zero. The final tail split adds children one level deeper than its parent, even if `max_M = 0`. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory.
-- A node also stops splitting when its **initial allocated count is below one**. The partition is fixed during subsequent updates.
+- A node also stops splitting when its **construction weight is below one**. In fractional mode, these provisional weights follow the compatible branches' probabilities. The partition is fixed during subsequent updates.
 - `max_EM_iter` and `EM_tol` control allocation iterations.
 - The stopping criterion is the Euclidean norm of the change in terminal masses. It is not a likelihood or parameter-distance criterion.
 - `verbose = TRUE` prints progress. The returned list contains no convergence flag, iteration count, or objective history.
-- With a uniform base, every right-censored observation starts entirely in the tail in either allocation mode. In fractional mode, finite interval-censored observations start with overlap-length weights; EM can subsequently move right-censored weight into compatible finite nodes.
-- PT `allocated = 0` uses overlap counts for finite intervals (and all censored intervals for exponential/Weibull bases), and skips EM. It is a different estimator, not a speed setting for the default fit.
+- Fractional allocation starts every branch at `1/2, 1/2`, including the final tail split. Initial observation weights use this complete tree's leaf masses and conditional terminal distributions. Each subsequent E-step uses the current masses. `max_EM_iter = 0` returns this equal-branch initialization without a count-based mass update.
+- For Unif, a finite observation has tail factor zero and a right-censored observation has tail factor one. Its normalized tail allocation is `p_tail / S(L)`. Only finite terminal intervals require uniform overlap-length calculations.
+- PT `allocated = 0` retains overlap counts for finite intervals (and all censored intervals for exponential/Weibull bases), its initial mode update, and no EM. In that option, uniform right-censored observations start entirely in the tail. It is a different estimator, not a speed setting for the default fit.
 
 ## Interpret the result
 

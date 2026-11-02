@@ -14,7 +14,7 @@
 #'   or `3` for Weibull.
 #' @param support Must be `c(0, Inf)` for every base distribution.
 #' @param max_M Nonnegative integer maximum ordinary tree depth; the root is level zero.
-#'   A node also stops splitting if its initial allocated count is below one.
+#'   A node also stops splitting if its construction weight is below one.
 #'   The rightmost terminal interval is then split once at `largest_obs`, adding
 #'   children one level deeper even when `max_M = 0` or that node stopped early.
 #'   Large depths can require excessive memory; start with a modest value.
@@ -22,10 +22,10 @@
 #'   for exponential, or two positive values `c(lambda, k)` for Weibull.
 #'   The Weibull shape is `k` and scale is `1 / lambda`.
 #' @param allocated `1` (default) for fractional allocation with EM updates;
-#'   `0` for overlap-count initialization without EM. In either mode, uniform
-#'   right-censored observations are initially assigned entirely to the tail.
+#'   `0` for the separate overlap-count estimator without EM.
 #' @param max_EM_iter Nonnegative integer maximum number of EM updates.
-#'   Zero returns the initialized fit.
+#'   Zero returns equal conditional branch probabilities and their initial
+#'   observation allocations when `allocated = 1`.
 #' @param EM_tol Nonnegative stopping tolerance for the Euclidean norm of the
 #'   change in terminal-node masses. No convergence flag is returned.
 #' @param verbose Logical; print iteration progress if `TRUE`.
@@ -45,17 +45,27 @@
 #' `[0, largest_obs]`, where `largest_obs` is the largest finite endpoint in the
 #' first two columns of `X` and must be positive. Uniform splits are midpoints.
 #' After ordinary splitting, the rightmost interval is split at `largest_obs`.
-#' If its depth is `m`, both new branch parameters are `0.5 * (m + 1)^2`.
+#' At child depth `m`, both Beta prior parameters are `max(1, 0.5 * m^2)`,
+#' including these final tail children.
 #'
 #' The uniform tail is a point mass at infinity: it contributes no finite-time
 #' density, and survival beyond `largest_obs` stays at the fitted tail mass.
 #' Its continuous density therefore integrates to one minus that mass.
 #' Exponential and Weibull tails use their conditional base distributions.
-#' Survival is zero at `Inf` for all bases. Uniform initialization assigns every
-#' right-censored observation entirely to the tail, regardless of its censoring
-#' time. Finite interval-censored observations use overlap lengths when
-#' `allocated = 1`. Subsequent EM steps may redistribute right-censored
-#' observations into compatible finite nodes using the fitted distribution.
+#' Survival is zero at `Inf` for all bases.
+#'
+#' With `allocated = 1`, every branch starts with probabilities `1/2, 1/2`,
+#' including the final tail split. A depth-`d` leaf initially has mass `2^(-d)`.
+#' During construction, an observation's weight is divided according to the
+#' current probabilities of its compatible children; these provisional weights
+#' determine early stopping. Once the tree is complete, observations are
+#' allocated using leaf masses times conditional terminal-base probabilities,
+#' normalized over all compatible leaves. Each later E-step uses the preceding
+#' M-step's masses. A uniform tail has observation factor one for right censoring
+#' and zero for finite observations; it needs no unbounded uniform truncation.
+#' The first count-based branch update occurs in the first EM iteration.
+#' With `allocated = 0`, overlap-count initialization and its mode update are
+#' retained; uniform right-censored observations start entirely in the tail.
 #'
 #' Intervals represent `(L, R]`, including zero when `L = 0`, with exact events
 #' treated separately. Node allocation and density use `(a, b]`, or `[0, b]`
@@ -65,6 +75,8 @@
 #'
 #' Branch masses use a clipped, mode-style update with depth-dependent prior
 #' parameters, not posterior draws or the usual posterior-mean update.
+#' All conditional split probabilities are constrained to `[1e-6, 1 - 1e-6]`,
+#' including the final tail split and the `allocated = 0` estimator.
 #' The function does not estimate uncertainty intervals, covariate effects,
 #' multivariate distributions, or a sampling-truncation likelihood.
 #'

@@ -25,7 +25,9 @@ additional split of the rightmost interval at the largest finite endpoint.}
 \code{c(lambda, k)} for Weibull, or an ignored numeric placeholder for uniform.}
 
 \item{allocated}{\code{1} for EM allocation or \code{0} for overlap counts without EM.
-Uniform right-censored observations start entirely in the tail in either mode.}
+EM initialization uses equal conditional branch probabilities and allocates
+observations through the complete terminal mixture. In the overlap-count
+mode only, uniform right-censored observations start entirely in the tail.}
 
 \item{max_EM_iter}{Nonnegative integer maximum number of EM updates.}
 

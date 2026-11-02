@@ -6,6 +6,11 @@ The research scripts below support simulation and data-analysis work. Some execu
 
 | File | Purpose | Requirements and execution notes |
 | --- | --- | --- |
+| `compare_tail_split.R` | Light-group comparison with and without the final split at `largest_obs` | `Rcpp`, `RcppArmadillo`, `ggplot2`, C++17 toolchain; compiles a temporary comparison implementation, reads only embedded data from `Data Analysis.R`, and writes plots and fitted results under `output/tail-split-comparison` |
+| `compare_partition_versions.R` | Light-group comparison of archived 0.2.0 and both 0.2.1 tail-split variants, for exponential and uniform bases | Also requires `SurvPT_0.2.0.tar.gz` in the repository root; compiles temporary classes from the archived and current sources, checks probability conservation, and writes curves, partition paths and fitted results under `output/partition-version-comparison` |
+| `diagnose_uniform_tail_em.R` | Audit uniform tail allocations and the effect of the Beta terms during EM | Run `compare_partition_versions.R` first; independently replays both saved fits with leaf-mixture algebra, runs likelihood-only EM on the same fixed partitions, and profiles the current tail mass under likelihood and penalized objectives; writes results under `output/uniform-tail-em-diagnostic` |
+| `compare_tail_regularization.R` | Controlled tail-prior experiments on the revised light-group partitions | Requires `output/probability-allocation/light_check.rds`; holds data and terminal distributions fixed, compares the current update with weakened tail-path priors and a separate tail probability, verifies objective ascent and two starting fits, and writes `output/tail-regularization-comparison` without altering package code |
+| `inspect_legacy_tail_partitions.R` | Inspect every archived 0.2.0 leaf entirely beyond the light-group maximum endpoint | Reads the saved version comparison, verifies the 0.2.0 archive checksum, separates full-tail and boundary-crossing contributions, and writes leaf probabilities, disjoint subtree totals and plots under `output/legacy-tail-partitions` |
 | `test_function.R` | Historical estimator comparison and plotting | `devtools`, `interval`; calls `View()` and refers to `fid` although its construction is commented out |
 | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
 | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
@@ -31,7 +36,7 @@ Rscript tests/pt-conditional-base.R
 Rscript tests/pt-tree-structure.R
 ```
 
-The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three trees with only the final tail split, three exact-data configurations, endpoint conventions, and default grids. Tree tests check truncated medians, the additional tail layer and its Beta parameters, early stopping, numerical tail stability, and uniform initialization that assigns all right-censored observations to the tail while allowing subsequent EM redistribution. They do not run the full simulation studies.
+The regression tests check initial and subsequent conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three trees with only the final tail split, three exact-data configurations, endpoint conventions, and default grids. Tree tests check truncated medians, the additional tail layer and its Beta parameters, equal conditional branch probabilities at initialization, early stopping, numerical tail stability, uniform tail factors for finite and right-censored observations, and the separate overlap-count option. They do not run the full simulation studies.
 
 ## Attribution
 

@@ -7,16 +7,16 @@ library(spBayesSurv)
 
 K = 1
 Lambda = 0.12
-n = 200
+n = 50
 #test_data = data_rc(seed = 12, n = n, K = K, Lambda = Lambda, q = 0.3)
-test_data = fiducial_3(234, n)
+test_data = fiducial_2(4, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
 
 # Both PT fits and the later comparisons use the same finite observation grid.
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
 x = seq(0, max(obs.mat), length.out = 201)
 #true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
-true.surv =  pgamma(x, 2, 1, lower.tail = FALSE)
+true.surv =  pgamma(x, 3, 1, lower.tail = FALSE)
 cat("Calling SurvPT with uniform prior...\n")
 result_unif <- survPT(test_data, test_seq = x, prior = 1,
                       max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)

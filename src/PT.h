@@ -36,7 +36,6 @@ public:
     double choose_split(int level, double left, double right); // choose split points for each node
     double init_alpha(int level, double left, double right); // update concentration parameters alpha
     void init_allocations(int parent, int left_child, int right_child); // update number of observations allocated to each node
-    double init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on prior
     void re_allocation(); // update allocations by the previous PT distribution
     void update_allocations(int parent, int left_child, int right_child); // update allocations for children nodes
     double update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on posterior
@@ -46,6 +45,7 @@ public:
 
 private:
     void split_node(int parent, double split_point);
+    void allocate_observations(); // E-step under the current complete leaf mixture
     void prepare_em_cache();
     void update_observation_probabilities();
     double cached_individual_allocation(arma::uword obs, int node) const;
@@ -64,7 +64,7 @@ private:
     vec right_bound; // left and right bounds of each node
     vec node_levels; // levels of each node in the tree
     vec alpha; // concentration parameters for beta distributions
-    mat in_node_obs; // observations idx allocated to each node
+    mat in_node_obs; // construction weights, then observation eligibility markers
     vec n_obs_allocated; // number of observations allocated to each node
     vec posterior_probs; // posterior probabilities of each node
     vec terminal_nodes; // indices of terminal nodes

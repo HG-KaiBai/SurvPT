@@ -10,6 +10,10 @@ using namespace std;
 #define SMALL_VALUE 1e-300
 #define LARGE_VALUE 1e+300
 
+namespace {
+constexpr double SPLIT_PROB_EPSILON = 1e-6;
+}
+
 
 // constructor
 PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
@@ -76,6 +80,12 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
     new_posterior_probs(0) = 1.0; // root node starts with probability 1
 
     init();
+    if (allocated == 1) {
+        // Once all terminal intervals exist, condition observations on the
+        // equal-branch tree. Initialization performs an E-step, not an M-step.
+        prepare_em_cache();
+        allocate_observations();
+    }
 }
 
 void PT::init() {
@@ -127,12 +137,18 @@ void PT::split_node(int i, double split_point) {
     alpha(left_child) = init_alpha(level + 1, left_bound(left_child), right_bound(left_child));
     alpha(right_child) = init_alpha(level + 1, left_bound(right_child), right_bound(right_child));
 
+    // Fractional allocation starts with equal conditional branch masses,
+    // including the extra split at largest_obs. Construction counts only
+    // decide early stopping; terminal base distributions enter after init().
+    posterior_probs(left_child) = 0.5 * posterior_probs(i);
+    posterior_probs(right_child) = 0.5 * posterior_probs(i);
     init_allocations(i, left_child, right_child);
+    if (allocated == 1) return;
 
     double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
     double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
     if (total > SMALL_VALUE) {
-        double left_prob = min(max(left_count / total, 0.0), 1.0);
+        double left_prob = min(max(left_count / total, SPLIT_PROB_EPSILON), 1.0 - SPLIT_PROB_EPSILON);
         posterior_probs(left_child) = left_prob * posterior_probs(i);
         posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
     } else {
@@ -171,7 +187,7 @@ double PT::init_alpha(int level, double left, double right) {
     if (level <= 0) {
         Rcpp::stop("Level must be positive.");
     }
-    return pow(level, 2.0) * 0.5; // example: increasing with level
+    return max(1.0, 0.5 * pow(level, 2.0)); // level is the child depth
     // Uncomment below for prior-dependent alpha initialization
     // if (prior == 1) { // Uniform
     //     return pow(level, 2.0) * 0.5;
@@ -197,8 +213,10 @@ double PT::init_alpha(int level, double left, double right) {
 }
 
 void PT::init_allocations(int parent, int left_child, int right_child) {
-    // indices of observations allocated to the parent node
-    arma::uvec parent_idx = arma::find(in_node_obs.row(parent) == 1.0);
+    // While growing the tree, propagate each observation's current weight
+    // through compatible branches. No base CDF or density is evaluated here.
+    // The complete-tree E-step later replaces these construction weights.
+    arma::uvec parent_idx = arma::find(in_node_obs.row(parent) > 0.0);
 
     for (arma::uword k = 0; k < parent_idx.n_elem; ++k) {
         const arma::uword obs = parent_idx(k);
@@ -206,31 +224,31 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
         const double right_obs = X(obs, 1);
 
         if (allocated == 1) {
-            // update for left child
-            if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-                if ((left_obs > left_bound(left_child) ||
-                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
-                    right_obs <= right_bound(left_child)) {
-                    // point mass
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += 1.0;
-                } else if (right_obs != left_obs) {
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += init_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
+            const bool exact = left_obs == right_obs;
+            const bool hit_left = exact ?
+                ((left_obs > left_bound(left_child) ||
+                  (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
+                 left_obs <= right_bound(left_child)) :
+                max(left_obs, left_bound(left_child)) < min(right_obs, right_bound(left_child));
+            const bool hit_right = exact ?
+                ((left_obs > left_bound(right_child) ||
+                  (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
+                 left_obs <= right_bound(right_child)) :
+                max(left_obs, left_bound(right_child)) < min(right_obs, right_bound(right_child));
+            const double parent_weight = in_node_obs(parent, obs);
+            const double compatible_mass =
+                (hit_left ? posterior_probs(left_child) : 0.0) +
+                (hit_right ? posterior_probs(right_child) : 0.0);
+            if (compatible_mass > 0.0) {
+                if (hit_left) {
+                    const double weight = parent_weight * posterior_probs(left_child) / compatible_mass;
+                    in_node_obs(left_child, obs) = weight;
+                    n_obs_allocated(left_child) += weight;
                 }
-            }
-
-            // update for right child
-            if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-                if ((left_obs > left_bound(right_child) ||
-                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
-                    right_obs <= right_bound(right_child)) {
-                    // point mass
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += 1.0;
-                } else if (right_obs != left_obs) {
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += init_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
+                if (hit_right) {
+                    const double weight = parent_weight * posterior_probs(right_child) / compatible_mass;
+                    in_node_obs(right_child, obs) = weight;
+                    n_obs_allocated(right_child) += weight;
                 }
             }
         } else if (allocated == 0) {
@@ -278,32 +296,7 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
     }
 }
 
-double PT::init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
-    double joint_left = max(left_obs, left_node);
-    double joint_right = min(right_obs, right_node);
-    if (prior == 1) { // Uniform
-        // All right-censored observations start at infinity. Keep their
-        // overlap markers in init_allocations so EM can later redistribute
-        // them into compatible finite nodes, despite zero initial weights.
-        if (right_obs == arma::datum::inf) {
-            return right_node == arma::datum::inf ? 1.0 : 0.0;
-        }
-        const double width_obs = right_obs - left_obs;
-        const double joint_width = max(joint_right - joint_left, 0.0);
-        if (width_obs > SMALL_VALUE) {
-            return joint_width / width_obs;
-        }
-    } else if (prior == 2 || prior == 3) {
-        return terminal_probability(left_node, right_node, left_obs, right_obs);
-    } else {
-        Rcpp::stop("Invalid prior type.");
-    }
-    return 0.0; // unreachable, quiets some compilers
-}
-
-
 void PT::EM_step() {
-    if (max_EM_iter > 0) prepare_em_cache();
     bool condition = true;
     int iter = 1;
     if (verbose) {
@@ -327,8 +320,21 @@ void PT::EM_step() {
 
 
 
-void PT::re_allocation() {
+void PT::allocate_observations() {
     if (allocation_cache_ready) update_observation_probabilities();
+    // Construction stored fractional weights in this matrix. E-steps store
+    // eligibility markers instead, retaining compatible zero-weight nodes.
+    in_node_obs.row(0).ones();
+    n_obs_allocated(0) = n;
+    for (int i = 0; i < nodes_used; ++i) {
+        if (child_nodes[i].first >= 0) {
+            update_allocations(i, child_nodes[i].first, child_nodes[i].second);
+        }
+    }
+}
+
+void PT::re_allocation() {
+    allocate_observations();
     for (int i = 0; i < nodes_used; i++) {
 
         // skip terminal nodes
@@ -339,14 +345,11 @@ void PT::re_allocation() {
         const int left_child = child_nodes[i].first;
         const int right_child = child_nodes[i].second;
 
-        // allocate observations to children
-        update_allocations(i, left_child, right_child);
-
         // posterior probabilities (initially set to prior probabilities)
         double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
         double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
         if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, 0.0), 1.0);
+            double left_prob = min(max(left_count / total, SPLIT_PROB_EPSILON), 1.0 - SPLIT_PROB_EPSILON);
             new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
             new_posterior_probs(right_child) = (1 - left_prob) * new_posterior_probs(i);
         } else {

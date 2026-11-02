@@ -79,7 +79,7 @@ grid = seq(0, max(obs.mat), length.out = 100)
 
 tryCatch({
   start_time <- Sys.time()
-  fit = pt_boot(data, B = 500)
+  fit = pt_boot(data, B = 1000)
   pt_surv = fit$surv_probs
   pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
   time = c(time, pt_time)
@@ -103,20 +103,79 @@ time = c(time, fid_time)
 fid_lower = 1 - fid[[2]]
 fid_upper = 1 - fid[[3]]
 
-plot = ggplot()+
-  geom_step(aes(x = x, y = pt_surv, color = "PT Estimate"), size = 1)+
-  geom_ribbon(aes(x = x, ymin = pt_lower, ymax = pt_upper, fill = "PT Estimate"), alpha = 0.2)+
-  geom_step(aes(x = x, y = fiducial_surv, color = "Fiducial Estimate"), size = 1)+
-  geom_ribbon(aes(x = x, ymin = fid_lower, ymax = fid_upper, fill = "Fiducial Estimate"), alpha = 0.2)+
-  labs(x = "Time",
-       y = "Survival Probability")+
-  scale_color_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red")) +
-  scale_fill_manual(name = "Method", values = c("PT Estimate" = "blue", "Fiducial Estimate" = "red")) +
-  scale_y_continuous(limits = c(0,1))+
-  scale_x_continuous(limits = c(0,max(x)))+
-  theme_minimal()+
-  theme(text = element_text(size = 16))+
+kmf <- icfit(L, R, conf.int = TRUE)
+
+turnbull_surv <- getsurv(x, kmf, "interpolation")[[1]]$S
+
+turnbull_ci <- data.frame(
+  x = kmf$CI$time,
+  lower = kmf$CI$lower,
+  upper = kmf$CI$upper
+)
+
+turnbull_ci <- subset(turnbull_ci, is.finite(x))
+
+# Combined plot
+plot <- ggplot() +
+
+  # Confidence intervals
+  geom_ribbon(
+    aes(x = x, ymin = pt_lower, ymax = pt_upper,
+        fill = "PT Estimate"), alpha = 0.2
+  ) +
+  geom_ribbon(
+    aes(x = x, ymin = fid_lower, ymax = fid_upper,
+        fill = "Fiducial Estimate"), alpha = 0.2
+  ) +
+  geom_ribbon(
+    data = turnbull_ci,
+    aes(x = x, ymin = lower, ymax = upper,
+        fill = "Turnbull NPMLE"), alpha = 0.2
+  ) +
+
+  # Survival curves
+  geom_step(
+    aes(x = x, y = pt_surv, color = "PT Estimate"),
+    linewidth = 1
+  ) +
+  geom_step(
+    aes(x = x, y = fiducial_surv, color = "Fiducial Estimate"),
+    linewidth = 1
+  ) +
+  geom_line(
+    aes(x = x, y = turnbull_surv, color = "Turnbull NPMLE"),
+    linewidth = 1
+  ) +
+
+  labs(
+    x = "Time",
+    y = "Survival Probability"
+  ) +
+  scale_color_manual(
+    name = "Method",
+    values = c(
+      "PT Estimate" = "blue",
+      "Fiducial Estimate" = "red",
+      "Turnbull NPMLE" = "black"
+    )
+  ) +
+  scale_fill_manual(
+    name = "Method",
+    values = c(
+      "PT Estimate" = "blue",
+      "Fiducial Estimate" = "red",
+      "Turnbull NPMLE" = "black"
+    )
+  ) +
+  coord_cartesian(
+    xlim = c(0, max(x)),
+    ylim = c(0, 1)
+  ) +
+  theme_minimal() +
+  theme(text = element_text(size = 16)) +
   theme(legend.position = "right")
+
+print(plot)
 
 
 save(fit, fid, file = "heavy_treat_estimates.RData")
