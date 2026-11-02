@@ -10,14 +10,14 @@ This document describes the finite Polya tree estimator implemented by `survPT()
 
 Splitting ends at `max_M` or when the initial allocated count is below one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
-For children at depth `l`, the branch prior parameter is `alpha_l = l^2 / 2`. The current branch-mass update computes
+For children at depth `m`, the branch prior parameter is `alpha_m = max(1, 0.5 * m^2)`. Both initialization and EM use the branch-mass update
 
 \[
-q_L=\operatorname{clip}_{[0,1]}
-\frac{\alpha_l+n_L-1}{2\alpha_l+n_L+n_R-2},\qquad q_R=1-q_L,
+q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
+\frac{\alpha_m+n_L-1}{2\alpha_m+n_L+n_R-2},\qquad q_R=1-q_L,
 \]
 
-with a one-half fallback when the denominator is too small. Child masses are parent mass times these branch proportions. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
+with `epsilon = 1e-6` and a one-half fallback when the denominator is too small. Both split probabilities lie in `[epsilon, 1-epsilon]`. Child masses are parent mass times these branch proportions; the bounds apply to conditional split probabilities, not node masses. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
 
 ## Conditional base distribution inside terminal intervals
 

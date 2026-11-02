@@ -50,7 +50,10 @@
 #' endpoint ordering, support compatibility, and integer iteration controls.
 #'
 #' Branch masses use a clipped, mode-style update with depth-dependent prior
-#' parameters, not posterior draws or the usual posterior-mean update.
+#' parameters `alpha_m = max(1, 0.5 * m^2)` for children at depth `m`.
+#' During initialization and EM, conditional split probabilities are bounded
+#' by `[epsilon, 1 - epsilon]`, with `epsilon = 1e-6`. These are not posterior
+#' draws or the usual posterior-mean update.
 #' The function does not estimate uncertainty intervals, covariate effects,
 #' multivariate distributions, or a sampling-truncation likelihood.
 #'
