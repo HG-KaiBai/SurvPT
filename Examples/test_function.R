@@ -1,31 +1,36 @@
 # Historical interactive comparison; see Examples/README.md before running.
 # Requires devtools, interval and spBayesSurv 1.1.9.
 # Optional fiducial plots require constructing the currently commented-out fid.
-devtools::load_all()
+devtools::load_all(".", compile = TRUE)
 library(interval)
 library(spBayesSurv)
 
-K = 1
+K = 2
 Lambda = 0.12
 n = 200
-test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
+test_data = data_rc(seed = 12, n = n, K = K, Lambda = Lambda, q = 0.3)
+#test_data = fiducial_2(4, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
 
-# Both PT fits and the later comparisons use the same finite observation grid.
+# All three PT fits and the later comparisons use the same finite observation grid.
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
 x = seq(0, max(obs.mat), length.out = 201)
 true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
-
+#true.surv =  pgamma(x, 3, 1, lower.tail = FALSE)
 cat("Calling SurvPT with uniform prior...\n")
 result_unif <- survPT(test_data, test_seq = x, prior = 1,
-                      max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+                      max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6, uniform_tail_factor = 1.1)
 
 cat("Calling SurvPT with exponential prior...\n")
 result_exp <- survPT(test_data, test_seq = x, prior = 2, prior_params = exp_par,
-                     max_M = 8, max_EM_iter = 100, EM_tol = 1e-4)
+                     max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
+
+cat("Calling SurvPT with uniform body and exponential tail...\n")
+result_unif_exp <- survPT(test_data, test_seq = x, prior = 4, prior_params = exp_par,
+                          max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 
 # Retain the original survival SSE and probability-increment RMSE comparisons.
-pt_results <- list(Unif = result_unif, Exp = result_exp)
+pt_results <- list(Unif = result_unif, Exp = result_exp, UnifExp = result_unif_exp)
 pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
   fit <- pt_results[[method]]
   survival <- as.numeric(fit$Survival_Probs)
@@ -34,7 +39,7 @@ pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
     Terminal_Mass = sum(fit$Posterior_Probs[fit$Terminal_Nodes]),
     Survival_SSE = sum((survival - true.surv)^2),
     Increment_RMSE = sqrt(mean((abs(diff(c(survival, 0))) -
-                                abs(diff(c(true.surv, 0))))^2))
+                                  abs(diff(c(true.surv, 0))))^2))
   )
 }))
 print(pt_checks, row.names = FALSE)
@@ -184,28 +189,23 @@ kmf = icfit(test_data$L, test_data$R)
 plot(kmf)
 lines(result_unif$Test_seq, result_unif$Survival_Probs, col = "blue", lwd = 2)
 lines(result_exp$Test_seq, result_exp$Survival_Probs, col = "orange", lwd = 2)
+lines(result_unif_exp$Test_seq, result_unif_exp$Survival_Probs, col = "magenta3", lwd = 2)
 #lines(result_opt$Test_seq, result_opt$Survival_Probs, col = "green", lwd = 2)
 lines(result_unif$Test_seq, 1-pweibull(result_unif$Test_seq, K, 1/Lambda), col = "red", lwd = 2)
 #lines(grid, 1 - fid$point_li, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Survival_Probs, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Survival_Probs, col = "cyan4", lwd = 2)
-legend("topright", legend = c("Kaplan-Meier", "SurvPT Unif", "SurvPT Exp", "OPT", "True Survival", "Fiducial", "MPT", "TBP"),
-       col = c("black", "blue","orange", "green" ,"red", "purple", "brown", "cyan4"), lwd = 2)
+legend("topright", legend = c("Kaplan-Meier", "SurvPT Unif", "SurvPT Exp", "SurvPT Unif+Exp", "OPT", "True Survival", "Fiducial", "MPT", "TBP"),
+       col = c("black", "blue", "orange", "magenta3", "green", "red", "purple", "brown", "cyan4"), lwd = 2)
 
 
 plot(result_unif$Test_seq, dweibull(result_unif$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
 lines(result_unif$Test_seq, result_unif$Density, col = "blue", lwd = 2)
 lines(result_exp$Test_seq, result_exp$Density, col = "orange", lwd = 2)
+lines(result_unif_exp$Test_seq, result_unif_exp$Density, col = "magenta3", lwd = 2)
 lines(result_opt$Test_seq, result_opt$Density, col = "green", lwd = 2)
 #lines(grid, fid$density, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Density, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Density, col = "cyan4", lwd = 2)
-legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "OPT", "Fiducial", "MPT", "TBP"),
-       col = c("red", "blue", "orange", "green", "purple", "brown", "cyan4"), lwd = 2)
-
-
-
-
-
-
-
+legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "SurvPT Unif+Exp", "OPT", "Fiducial", "MPT", "TBP"),
+       col = c("red", "blue", "orange", "magenta3", "green", "purple", "brown", "cyan4"), lwd = 2)

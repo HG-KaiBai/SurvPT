@@ -1,6 +1,6 @@
 # Examples and research scripts
 
-Start with [`quickstart.R`](quickstart.R). It uses synthetic data, fits `survPT()` with uniform, exponential, and Weibull bases, checks basic probability properties, and does not write files.
+Start with [`quickstart.R`](quickstart.R). It uses synthetic data, fits `survPT()` with uniform, exponential, Weibull, and spliced uniform-exponential bases, checks basic probability properties, and does not write files.
 
 The research scripts below support simulation and data-analysis work. Some execute experiments when sourced, use local interactive state, or write results into the working directory. Review their settings and dependencies before running them.
 
@@ -28,9 +28,11 @@ After installing SurvPT, run these commands from the repository root:
 ```sh
 Rscript Examples/quickstart.R
 Rscript tests/pt-conditional-base.R
+Rscript tests/pt-uniform-tail-factor.R
+Rscript tests/pt-uniform-exp.R
 ```
 
-The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior across the three PT bases. They cover 12 mixed-censoring configurations, three root-only trees, and three exact-data configurations. They do not run the full simulation studies.
+The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior. They cover 20 mixed-censoring configurations for priors 1-3, uniform cutoff controls, and 24 configurations of the spliced uniform-exponential base, along with endpoint and interface checks. They do not run the full simulation studies.
 
 ## Attribution
 

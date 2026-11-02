@@ -12,11 +12,11 @@ times <- rep(c(0, 0.1, 0.5, 1, 2), each = 4)
 observations <- rbind(cbind(times, times), c(0, 0.3), c(0.1, 1.5),
                       c(1, 3), c(0.9, Inf), c(2.6, Inf))
 
-fit_pt <- function(data, prior, support, depth, iterations, points) {
+fit_pt <- function(data, prior, support, depth, iterations, points, uniform_tail_factor = 1.1) {
     survPT(data, prior = prior, support = support, max_M = depth,
            prior_params = switch(prior, NULL, 1, c(1, 2)),
            max_EM_iter = iterations, EM_tol = 0, test_seq = points,
-           verbose = FALSE)
+           verbose = FALSE, uniform_tail_factor = uniform_tail_factor)
 }
 
 # Independent reference distributions use R's distribution functions.
@@ -70,15 +70,16 @@ reference_allocations <- function(fit, data, prior, cap) {
 }
 
 cases <- 0L
-for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
+for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6))
+for (factor in if (prior == 1) c(1.1, 1.5, 2) else 1.1) {
     support <- c(0, if (finite) 4 else Inf)
     data <- observations
     if (finite) data[is.infinite(data[, 2]), 2] <- support[2]
-    cap <- 1.1 * max(data[is.finite(data)])
+    cap <- factor * max(data[is.finite(data)])
     points <- sort(unique(c(-1, seq(0, 5, length.out = 101), cap, cap+1, 10, Inf)))
     fits <- lapply(c(0, 1, 2, 20), function(iterations)
-        fit_pt(data, prior, support, depth, iterations, points))
-    label <- sprintf("prior=%d finite=%s depth=%d", prior, finite, depth)
+        fit_pt(data, prior, support, depth, iterations, points, factor))
+    label <- sprintf("prior=%d finite=%s depth=%d factor=%g", prior, finite, depth, factor)
 
     for (step in 1:2) {
         previous <- fits[[step]]
@@ -118,7 +119,7 @@ for (prior in 1:3) for (finite in c(FALSE, TRUE)) for (depth in c(2, 6)) {
     final <- fits[[4]]
     density_integral <- sum(vapply(final$Terminal_Nodes, function(j) {
         bounds <- leaf_bounds(final, j, prior, cap)
-        integrate(function(t) as.vector(fit_pt(data, prior, support, depth, 20, t)$Density),
+        integrate(function(t) as.vector(fit_pt(data, prior, support, depth, 20, t, factor)$Density),
                   bounds[1], bounds[2], rel.tol = 1e-7)$value
     }, numeric(1)))
     assert_close(density_integral, 1, paste(label, "density integral"), 1e-6)

@@ -6,7 +6,7 @@
 \title{Low-level native finite Polya tree interface}
 \usage{
 SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
-  max_EM_iter, EM_tol, verbose)
+  max_EM_iter, EM_tol, verbose, uniform_tail_factor = 1.1)
 }
 \arguments{
 \item{X}{Numeric matrix with left and right endpoints in its first two
@@ -14,13 +14,15 @@ columns; see \code{\link{survPT}()} for supported observation encodings.}
 
 \item{test_seq}{Numeric evaluation points.}
 
-\item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull.}
+\item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull,
+or \code{4} uniform body with exponential tail.}
 
 \item{support}{Numeric vector of lower and upper support bounds.}
 
 \item{max_M}{Nonnegative integer maximum tree depth.}
 
-\item{prior_params}{Numeric base parameters: one rate for exponential,
+\item{prior_params}{Numeric base parameters: one rate for exponential or
+the uniform/exponential splice (\code{prior = 4}),
 \code{c(lambda, k)} for Weibull, or an ignored numeric placeholder for uniform.}
 
 \item{allocated}{\code{1} for EM allocation or \code{0} for legacy overlap counts.}
@@ -30,6 +32,10 @@ columns; see \code{\link{survPT}()} for supported observation encodings.}
 \item{EM_tol}{Nonnegative tolerance for terminal-mass changes.}
 
 \item{verbose}{Logical progress-output flag.}
+
+\item{uniform_tail_factor}{Finite numeric scalar greater than 1, default
+\code{1.1}. Multiplier for the uniform base's finite tail cutoff; see
+\code{\link{survPT}()}. Used only for \code{prior = 1}.}
 }
 \value{
 A list with native names: \code{left_bound}, \code{right_bound}, \code{node_levels},
@@ -43,13 +49,15 @@ to those documented for \code{\link{survPT}()}.
 Direct Rcpp entry point for the PT implementation. Most users should call
 \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
 terminal-node indices to R indexing. This interface is retained for
-compatibility and requires all arguments explicitly.
+compatibility. All arguments except \code{uniform_tail_factor} are required.
 }
 \details{
 Pass a numeric matrix as \code{X} and numeric vectors for vector arguments.
 For a uniform base, pass a numeric placeholder such as \code{c(0.12, 1)} for
 \code{prior_params}; it is ignored. The wrapper's input validation is bypassed.
 Use the endpoint, support, and parameter conventions in \code{\link{survPT}()}.
+For \code{prior = 4}, supply a finite positive exponential rate in \code{prior_params}.
+No rate estimation is performed by this interface.
 }
 \seealso{
 \code{\link{survPT}()}

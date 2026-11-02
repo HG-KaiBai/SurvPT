@@ -1,7 +1,8 @@
 #' Survival estimation with finite Polya trees
 #'
 #' SurvPT provides univariate finite Polya tree estimation for censored event
-#' times, with uniform, exponential, or Weibull conditional base distributions.
+#' times, with uniform, exponential, Weibull, or spliced uniform-exponential
+#' conditional base distributions.
 #' Parametric likelihood helpers and simulation generators support fitting
 #' and evaluating the estimator.
 #'

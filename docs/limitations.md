@@ -39,7 +39,7 @@ These limitations are documented to distinguish observed software behavior from 
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 
-**A uniform curve reaches zero unexpectedly early.** Inspect the largest finite endpoint and the factor-1.1 cutoff. Use a scientifically appropriate exponential or Weibull base if an unbounded PT tail is required.
+**A uniform curve reaches zero unexpectedly early.** Inspect the largest finite endpoint and `uniform_tail_factor` (default `1.1`), which determines the finite cutoff. Use a scientifically appropriate exponential or Weibull base if an unbounded PT tail is required.
 
 **A historical simulation fails on Windows.** Scripts using `parallel::mclapply()` with multiple forked workers require adaptation. Start serially with one worker, or implement and validate a socket-cluster workflow.
 

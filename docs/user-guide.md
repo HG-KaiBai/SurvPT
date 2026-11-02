@@ -32,6 +32,7 @@ stopifnot(all(is.finite(x$L)), all(x$L >= 0),
 | `1` | `NULL` (ignored) | Uniform within each effective terminal interval |
 | `2` | positive rate `lambda` | `exp(-lambda * t)` |
 | `3` | `c(lambda, k)`, both positive | `exp(-(lambda * t)^k)` |
+| `4` | one finite positive rate `lambda` | Uniform body on `[0, M]`, exponential survival `exp(-lambda * t)` after `M = largest_obs` |
 
 For Weibull calculations with R, use `shape = k, scale = 1 / lambda`. The base distribution controls partition locations and the shape inside a terminal interval; the tree estimates the interval masses.
 
@@ -51,9 +52,22 @@ fit_weibull <- survPT(d[, c("L", "R")], prior = 3,
 
 These plug-in parameters are held fixed by the tree fit. Their estimation uncertainty is not propagated into the returned curve. The optimization helpers return parameter estimates only; they do not return convergence diagnostics or standard errors.
 
+For `prior = 4`, use `survPT(d[, c("L", "R")], prior = 4, prior_params = rate)`.
+The rate must be supplied; the function does not estimate it automatically.
+The body receives probability `1 - exp(-rate * M)` and is uniform conditional on `[0, M]`.
+The tail receives probability `exp(-rate * M)` and, conditional on exceeding `M`,
+has distribution `M + Exp(rate)`. The base CDF is continuous, although the density
+can jump at `M`. A finite upper support conditions and truncates this base as usual.
+The result includes `Prior_Params` and `Tail_Start` for this prior only.
+
 ## Choose support and evaluation points
 
-The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `1.1 * max(finite observed endpoints)`. Exponential and Weibull PT outputs retain infinite tails. See [Methods](methods.md) for the conditional distributions within terminal intervals.
+The default `support = c(0, Inf)` permits an unbounded time axis, but the **uniform PT output has an effective finite tail cutoff** at `uniform_tail_factor * max(finite observed endpoints)`. The multiplier defaults to `1.1` and must be a finite number greater than one. It controls uniform partitioning, initialization, EM allocation, and prediction. Priors `2`, `3`, and `4` retain infinite tails and ignore this multiplier. See [Methods](methods.md) for the conditional distributions within terminal intervals.
+
+```r
+fit_uniform <- survPT(x, prior = 1, uniform_tail_factor = 1.5,
+                      verbose = FALSE)
+```
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 

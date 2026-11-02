@@ -17,8 +17,15 @@ constexpr double SPLIT_EPSILON = 1e-6;
 
 
 // constructor
-PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
-    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
+PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor) :
+    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), uniform_tail_factor(uniform_tail_factor), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
+
+    if (!arma::is_finite(uniform_tail_factor) || uniform_tail_factor <= 1.0) {
+        Rcpp::stop("uniform_tail_factor must be a finite number greater than 1.");
+    }
+    if (prior == 4 && (X.n_cols < 2 || X.n_rows == 0)) {
+        Rcpp::stop("prior = 4 requires nonempty data with two observation endpoint columns.");
+    }
 
     n = X.n_rows;
     if (max_M <= 10){
@@ -36,6 +43,27 @@ PT::PT(const mat X, const vec test_seq, const int prior, const vec support, cons
                 largest_obs = v;
             }
         }
+    }
+
+    if (prior == 4) {
+        if (!arma::is_finite(largest_obs) || largest_obs <= 0.0) {
+            Rcpp::stop("prior = 4 requires a positive finite largest observation endpoint.");
+        }
+        if (prior_params.n_elem != 1 || !arma::is_finite(prior_params(0)) || prior_params(0) <= 0.0) {
+            Rcpp::stop("prior = 4 requires one finite positive exponential rate in prior_params.");
+        }
+        if (support.n_elem != 2 || !arma::is_finite(support(0)) || support(0) < 0.0 ||
+            std::isnan(support(1)) || support(1) <= support(0)) {
+            Rcpp::stop("prior = 4 requires nonnegative, ordered support bounds.");
+        }
+        for (uword obs = 0; obs < X.n_rows; ++obs) {
+            if (!arma::is_finite(X(obs, 0)) || X(obs, 0) < 0.0 ||
+                std::isnan(X(obs, 1)) || X(obs, 1) < X(obs, 0)) {
+                Rcpp::stop("prior = 4 requires finite nonnegative left endpoints and ordered, nonmissing right endpoints.");
+            }
+        }
+        hybrid_body_mass = -std::expm1(-prior_params(0) * largest_obs);
+        hybrid_tail_mass = std::exp(-prior_params(0) * largest_obs);
     }
 
     // initialize other member variables
@@ -137,7 +165,7 @@ double PT::choose_split(int level, double left, double right) {
         if (arma::is_finite(right)){
             return (left + right) / 2.0; // midpoint split
         } else {
-            return left + (1.1 * largest_obs - support(0)) / (1 << (level + 1)); // exponential split
+            return left + (uniform_tail_factor * largest_obs - support(0)) / (1 << (level + 1)); // exponential split
         }
     } else if (prior == 2) { // Exponential
         const double lambda = prior_params(0);
@@ -164,6 +192,13 @@ double PT::choose_split(int level, double left, double right) {
             double split_cdf = 0.5 * (1 + cdf_left);
             return pow(-log(1 - split_cdf), 1.0 / k) / lambda;
         }
+    } else if (prior == 4) {
+        const double midpoint = 0.5 * hybrid_cdf(left) + 0.5 * hybrid_cdf(right);
+        // Use the survival scale in the upper half to avoid rounding the CDF
+        // to one before inverting it in an exponential tail.
+        const double split = midpoint <= 0.5 ? hybrid_quantile(midpoint, true) :
+            hybrid_quantile(0.5 * base_survival(left) + 0.5 * base_survival(right), false);
+        return arma::is_finite(split) && split > left && split < right ? split : -1.0;
     } else {
         Rcpp::stop("Invalid prior type.");
     }
@@ -276,18 +311,23 @@ void PT::init_allocations(int parent, int left_child, int right_child) {
 double PT::init_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
     double joint_left = max(left_obs, left_node);
     double joint_right = min(right_obs, right_node);
+    if (prior == 4) {
+        const double denominator = hybrid_probability(left_obs, right_obs);
+        return denominator > SMALL_VALUE ?
+            std::clamp(hybrid_probability(joint_left, joint_right) / denominator, 0.0, 1.0) : 0.0;
+    }
     if (prior == 1) { // Uniform
         double width_obs;
         if (arma::is_finite(right_obs)){
             width_obs = right_obs - left_obs;
         } else {
-            width_obs = 1.1 * largest_obs - left_obs; // arbitrary large width for right-censored
+            width_obs = uniform_tail_factor * largest_obs - left_obs; // finite width for right-censored
         }
         double joint_width;
         if (arma::is_finite(joint_right)){
             joint_width = joint_right - joint_left;
         } else {
-            joint_width = 1.1 * largest_obs - joint_left; // arbitrary large width for right-censored
+            joint_width = uniform_tail_factor * largest_obs - joint_left; // finite width for right-censored
         }
         if (width_obs > SMALL_VALUE) {
             return joint_width / width_obs;
@@ -610,7 +650,7 @@ void PT::update_tree_size() {
 
 double PT::terminal_right_bound(double right) const {
     if (prior == 1 && !arma::is_finite(right)) {
-        return arma::is_finite(support(1)) ? support(1) : 1.1 * largest_obs;
+        return arma::is_finite(support(1)) ? support(1) : uniform_tail_factor * largest_obs;
     }
     return right;
 }
@@ -620,6 +660,12 @@ double PT::base_survival(double x) const {
         return exp(-prior_params(0) * x);
     } else if (prior == 3) {
         return exp(-pow(prior_params(0) * x, prior_params(1)));
+    } else if (prior == 4) {
+        if (x <= 0.0) return 1.0;
+        if (x <= largest_obs) {
+            return hybrid_tail_mass + hybrid_body_mass * ((largest_obs - x) / largest_obs);
+        }
+        return exp(-prior_params(0) * x);
     }
     Rcpp::stop("Invalid prior type.");
     return 0.0;
@@ -632,9 +678,46 @@ double PT::base_density(double x) const {
     } else if (prior == 3) {
         const double k = prior_params(1);
         return k * lambda * pow(lambda * x, k - 1.0) * exp(-pow(lambda * x, k));
+    } else if (prior == 4) {
+        if (x < 0.0 || std::isinf(x)) return 0.0;
+        return x <= largest_obs ? hybrid_body_mass / largest_obs : lambda * exp(-lambda * x);
     }
     Rcpp::stop("Invalid prior type.");
     return 0.0;
+}
+
+double PT::hybrid_cdf(double x) const {
+    if (x <= 0.0) return 0.0;
+    if (x <= largest_obs) return hybrid_body_mass * (x / largest_obs);
+    return -std::expm1(-prior_params(0) * x);
+}
+
+double PT::hybrid_quantile(double probability, bool lower_tail) const {
+    if (lower_tail) {
+        if (probability <= 0.0) return 0.0;
+        if (probability >= 1.0) return arma::datum::inf;
+        if (probability <= hybrid_body_mass) return largest_obs * (probability / hybrid_body_mass);
+        return -std::log1p(-probability) / prior_params(0);
+    }
+    if (probability >= 1.0) return 0.0;
+    if (probability <= 0.0) return arma::datum::inf;
+    if (probability >= hybrid_tail_mass) return largest_obs * ((1.0 - probability) / hybrid_body_mass);
+    return -std::log(probability) / prior_params(0);
+}
+
+double PT::hybrid_probability(double left, double right) const {
+    const double lo = std::max(0.0, left);
+    if (right <= lo) return 0.0;
+    double probability = 0.0;
+    if (lo < largest_obs) {
+        probability = hybrid_body_mass * ((std::min(right, largest_obs) - lo) / largest_obs);
+    }
+    if (right > largest_obs) {
+        const double tail_left = std::max(lo, largest_obs);
+        probability += std::exp(-prior_params(0) * tail_left) *
+            (-std::expm1(-prior_params(0) * (right - tail_left)));
+    }
+    return probability;
 }
 
 double PT::terminal_probability(double left, double right, double a, double b) const {
@@ -646,8 +729,10 @@ double PT::terminal_probability(double left, double right, double a, double b) c
     }
 
     // Conditional continuous probability; endpoint inclusion does not change it.
-    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
-    const double numerator = prior == 1 ? hi - lo : base_survival(lo) - base_survival(hi);
+    const double denom = prior == 4 ? hybrid_probability(a, b) :
+        (prior == 1 ? b - a : base_survival(a) - base_survival(b));
+    const double numerator = prior == 4 ? hybrid_probability(lo, hi) :
+        (prior == 1 ? hi - lo : base_survival(lo) - base_survival(hi));
     if (denom > SMALL_VALUE) {
         return min(max(numerator / denom, 0.0), 1.0);
     }
@@ -661,7 +746,8 @@ double PT::terminal_density(double t, double a, double b) const {
     if (std::isinf(t) || t < a || t > b || (t == a && a != 0.0)) {
         return 0.0;
     }
-    const double denom = prior == 1 ? b - a : base_survival(a) - base_survival(b);
+    const double denom = prior == 4 ? hybrid_probability(a, b) :
+        (prior == 1 ? b - a : base_survival(a) - base_survival(b));
     if (denom > SMALL_VALUE) {
         return prior == 1 ? 1.0 / denom : base_density(t) / denom;
     }

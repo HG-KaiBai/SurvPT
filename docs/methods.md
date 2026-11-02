@@ -2,11 +2,11 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.0, including its partition, allocation updates, and tail conventions.
+This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.2, including its partition, allocation updates, and tail conventions.
 
 ## Finite PT partition
 
-`survPT()` partitions the declared support into a binary tree. For a finite uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the parent interval. For a uniform interval with infinite right endpoint, the split uses the data-dependent cutoff `C = 1.1 * largest_obs` and the current depth, where `largest_obs` is the largest finite value in the first two columns of `X`.
+`survPT()` partitions the declared support into a binary tree. For a finite uniform interval the split is its midpoint. Exponential and Weibull splits bisect the base probability of the parent interval. For a uniform interval with infinite right endpoint, the split uses the data-dependent cutoff `C = uniform_tail_factor * largest_obs` and the current depth, where `largest_obs` is the largest finite value in the first two columns of `X`. The multiplier defaults to `1.1` and must be a finite number greater than one. The same multiplier is used for infinite observation bounds during uniform initialization and for infinite terminal bounds during EM and prediction.
 
 Splitting ends at `max_M` or when the initial allocated count is below one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
@@ -19,9 +19,54 @@ q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
 
 with `epsilon = 1e-6` and a one-half fallback when the denominator is too small. Both split probabilities lie in `[epsilon, 1-epsilon]`. Child masses are parent mass times these branch proportions; the bounds apply to conditional split probabilities, not node masses. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
 
+## Uniform body with exponential tail
+
+For `prior = 4`, let `M = largest_obs > 0`, `lambda = prior_params[1] > 0`,
+and `w = 1 - exp(-lambda * M)`. The rate is supplied directly and held fixed;
+an exponential MLE from `estimate_exp()` can be passed by the caller. The base is
+
+\[
+F_0(t) = \begin{cases}
+0, & t < 0,\\
+w\,t/M, & 0 \le t \le M,\\
+1-\exp(-\lambda t), & t > M,
+\end{cases}
+\qquad
+f_0(t) = \begin{cases}
+w/M, & 0 \le t \le M,\\
+\lambda\exp(-\lambda t), & t > M,\\
+0, & t < 0.
+\end{cases}
+\]
+
+The CDF is continuous at `M`; the density need not be. The implementation uses
+the body density at exactly `M`. The base tail mass is `exp(-lambda * M)`, and
+the tail conditional on exceeding `M` is `M + Exp(lambda)`.
+The inverse CDF, for `0 < p < 1`, is
+
+\[
+F_0^{-1}(p) = \begin{cases}
+M p/w, & p \le w,\\
+-\log(1-p)/\lambda, & p > w.
+\end{cases}
+\]
+
+Splits bisect the parent interval's base probability. In the upper half of
+the distribution, the implementation averages survival probabilities and uses
+the inverse survival function, avoiding loss of the exponential tail when the
+CDF rounds to one. Unrepresentable interior splits terminate the node.
+Interval probabilities add the uniform and exponential contributions when an
+interval crosses `M`; `expm1` avoids subtracting nearly equal exponentials.
+Initialization, EM, density, and survival all use this same base, conditioned
+on each node or terminal interval. A finite upper support truncates the base.
+`uniform_tail_factor` is not used by this prior.
+
+The specified tail mass belongs to the base distribution. Fitting updates
+the tree masses, so fitted survival at `M` need not equal `exp(-lambda * M)`.
+
 ## Conditional base distribution inside terminal intervals
 
-Let `A = (a,b]` be a terminal interval, using `[0,b]` when `a = 0`, `p_A` its fitted mass, and `F_0`, `f_0`, `S_0` the base CDF, density, and survival function. For exponential and Weibull bases,
+Let `A = (a,b]` be a terminal interval, using `[0,b]` when `a = 0`, `p_A` its fitted mass, and `F_0`, `f_0`, `S_0` the base CDF, density, and survival function. For exponential, Weibull, and spliced uniform-exponential bases,
 
 \[
 f_A(t)=\frac{f_0(t)\,1\{t\in A\}}{F_0(b)-F_0(a)},
@@ -50,7 +95,7 @@ During EM, the partition, observation intervals and base parameters stay fixed. 
 
 1. **Tree truncation:** stopping recursive partitioning at a finite depth or low initial count.
 2. **Conditional base truncation:** restricting and renormalizing a base distribution inside one terminal interval.
-3. **Uniform time cutoff:** replacing the infinite right endpoint of a uniform PT leaf by `C = 1.1 * largest_obs` for both EM and output.
+3. **Uniform time cutoff:** replacing the infinite right endpoint of a uniform PT leaf by `C = uniform_tail_factor * largest_obs` for both EM and output (default multiplier `1.1`).
 
 The third is a modeling choice in this implementation. Exponential and Weibull PT bases do not impose that finite cutoff: an exponential tail leaf has distribution `a + Exp(lambda)`, while a Weibull tail leaf follows the original Weibull law conditional on `T > a`. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
 
@@ -63,5 +108,6 @@ The third is a modeling choice in this implementation. Exponential and Weibull P
 | `R/MLE_estimate.R` | Parametric likelihoods, gradients, and optimization |
 | `R/data_example.R` | Simulation generators |
 | `tests/pt-conditional-base.R` | Conditional allocation, output, mass, and tail regression checks |
+| `tests/pt-uniform-exp.R` | Spliced-base CDF/quantile, allocation, density, tail, and interface checks |
 
 `survPT()` provides point estimates. It does not return posterior samples, credible intervals, automatic tuning selection, or proof of convergence.

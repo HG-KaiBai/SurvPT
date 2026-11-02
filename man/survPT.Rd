@@ -14,7 +14,8 @@ survPT(
   allocated = 1,
   max_EM_iter = 100,
   EM_tol = 1e-06,
-  verbose = TRUE
+  verbose = TRUE,
+  uniform_tail_factor = 1.1
 )
 }
 \arguments{
@@ -30,7 +31,7 @@ in the first two columns of \code{X}, including right-censoring times.
 Supply a grid explicitly when comparing fits.}
 
 \item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
-or \code{3} for Weibull.}
+\code{3} for Weibull, or \code{4} for a uniform body with an exponential tail.}
 
 \item{support}{Numeric vector \code{c(lower, upper)} with \code{lower < upper}.
 The default is \code{c(0, Inf)}. Use nonnegative time support and observation
@@ -41,8 +42,10 @@ A node also stops splitting if its initial allocated count is below one.
 Large depths can require excessive memory; start with a modest value.}
 
 \item{prior_params}{\code{NULL} for uniform (ignored), one positive rate \code{lambda}
-for exponential, or two positive values \code{c(lambda, k)} for Weibull.
-The Weibull shape is \code{k} and scale is \code{1 / lambda}.}
+for exponential or the uniform/exponential splice (\code{prior = 4}), or two
+positive values \code{c(lambda, k)} for Weibull. The Weibull shape is \code{k} and
+scale is \code{1 / lambda}. For \code{prior = 4}, a finite positive rate is required;
+pass an estimate from \code{estimate_exp()} to use an MLE. It is held fixed.}
 
 \item{allocated}{\code{1} (default) for fractional allocation with EM updates;
 \code{0} for the legacy overlap-count initialization without EM.}
@@ -54,6 +57,12 @@ Zero returns the initialized fit.}
 change in terminal-node masses. No convergence flag is returned.}
 
 \item{verbose}{Logical; print iteration progress if \code{TRUE}.}
+
+\item{uniform_tail_factor}{Finite numeric scalar greater than 1, default
+\code{1.1}. For a uniform base, multiplies the largest finite observation
+endpoint when replacing an infinite bound in partitioning, initialization,
+EM allocation, and prediction. Used only for \code{prior = 1}.
+With finite support, keep observation endpoints within that support.}
 }
 \value{
 A list with the following components. Armadillo vectors can appear
@@ -68,6 +77,8 @@ masses at these indices to check total probability.}
 \item{Test_seq}{The evaluation grid.}
 \item{Survival_Probs}{Estimated survival probabilities at the grid.}
 \item{Density}{Estimated density at the grid.}
+\item{Prior_Params, Tail_Start}{For \code{prior = 4} only: the supplied
+exponential rate and splice point \code{M}.}
 }
 The wrapper does not return \code{Alpha}, posterior samples, or convergence
 diagnostics.
@@ -84,9 +95,22 @@ function and density use the same selected base distribution conditioned on
 each terminal interval. The exponential base survival is \code{exp(-lambda * t)};
 the Weibull base survival is \code{exp(-(lambda * t)^k)}.
 A uniform terminal interval with an infinite right endpoint is capped at
-1.1 times the largest finite endpoint in the first two columns of \code{X}.
+\code{uniform_tail_factor} times the largest finite endpoint in the first two
+columns of \code{X} (default multiplier \code{1.1}).
 Exponential and Weibull terminal intervals retain their infinite tails.
 This cutoff does not replace \code{Inf} in the returned \code{Right} boundaries.
+
+For \code{prior = 4}, let \code{M} be the largest finite endpoint in the first two
+columns of \code{X} and \code{lambda = prior_params[1]}. The base CDF is
+\code{(1 - exp(-lambda * M)) * t / M} on \code{[0, M]}, and
+\code{1 - exp(-lambda * t)} for \code{t > M}. Its survival at \code{M} is
+\code{exp(-lambda * M)}. The CDF is continuous; the density may jump at \code{M},
+where the left-hand density is returned. Splits bisect this base probability,
+and allocation and prediction condition the same base on each terminal
+interval. The exponential tail is unbounded with infinite upper support.
+\code{M} must be positive and finite, and left endpoints finite and nonnegative.
+The tree updates interval masses, so its fitted tail mass is not fixed to
+the base tail mass.
 
 Intervals represent \verb{(L, R]}, including zero when \code{L = 0}, with exact events
 treated separately. Node allocation and density use \verb{(a, b]}, or \verb{[0, b]}
