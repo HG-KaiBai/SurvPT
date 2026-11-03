@@ -10,7 +10,7 @@ This document describes the finite Polya tree estimator implemented by `survPT()
 
 Splitting ends at `max_M` or when the initial allocated count is below one. Consequently, terminal intervals can occur at different depths. The tree is initialized once and does not grow again during EM.
 
-For children at depth `m`, the branch prior parameter is `alpha_m = max(1, 0.5 * m^2)`. Both initialization and EM use the branch-mass update
+For children at depth `m`, the branch prior parameter is `alpha_m = max(1, 0.5 * m^2)` by default (`flat = FALSE`). Set `flat = TRUE` to use `alpha_m = 1` at every depth. The root parameter is always 1. Both initialization and EM use the branch-mass update
 
 \[
 q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
@@ -91,6 +91,16 @@ Exact observations are assigned directly by their event times. At a positive spl
 
 During EM, the partition, observation intervals and base parameters stay fixed. The implementation caches observation/leaf conditional probabilities and child links, and computes each observation's denominator once per iteration. A node's numerator sums its descendant leaves in the original `terminal_nodes` order. Observation accumulation, branch updates and the convergence calculation retain their original order; no child-total regrouping or prefix-sum subtraction is used. Initialization and prediction are unchanged. The additional dense probability cache is limited to 64 MiB per fit; larger problems and degenerate numerical partitions use the original allocation calculation.
 
+## Posterior prediction and DA-Gibbs sampling
+
+`survPT()` only fits and retains the tree, its prior parameters, fitted masses, and observation endpoints. `predict(model, x, level = 0.95)` evaluates the same fitted distribution as the previous survival output in its `estimate` column. The prediction grid never enters fitting.
+
+For posterior uncertainty, prediction applies Algorithm 2's two-block data-augmentation Gibbs scheme to this existing tree. For each censored observation, compute its conditional base coverage `w[i, leaf]` in every compatible leaf. At each sweep, draw one leaf label with probability proportional to `mass[leaf] * w[i, leaf]`; exact-event labels are fixed. Aggregate the resulting integer leaf counts up the tree and draw each split from `Beta(alpha_left + count_left, alpha_right + count_right)`. Recompute node masses along the paths and evaluate the resulting survival curve. Allocations change each sweep; fractional EM counts are not frozen and substituted into Beta distributions.
+
+The chain starts at the fitted masses and samples unrestricted Beta probabilities, without the clipping used for MAP optimization. The partition, prior parameters and within-leaf base distributions remain fixed. No special tail-node construction is introduced. Nonzero coverage weights are cached per observation, and label probabilities are normalized on the log scale.
+
+The defaults discard 3,000 sweeps and retain 5,000 draws (8,000 total sweeps with the default thinning). `n_samples`, `burn_in` and `thin` control the run; `set.seed()` controls reproducibility. The result contains posterior means, medians and pointwise equal-tailed credible intervals. These are conditional on the retained tree and base parameters, and are Monte Carlo estimates rather than a guarantee of convergence. `keep_samples = TRUE` retains the sampled curves for diagnostics. `sample = FALSE` evaluates only the fitted point estimate. `type = "density"` applies the same calculation to density.
+
 ## Three meanings of truncation
 
 1. **Tree truncation:** stopping recursive partitioning at a finite depth or low initial count.
@@ -104,10 +114,13 @@ The third is a modeling choice in this implementation. Exponential and Weibull P
 | Source | Responsibility |
 | --- | --- |
 | `R/PT.R` | Input wrapper, defaults, result names, conversion of terminal indices to R indexing |
+| `R/predict.R` | S3 prediction interface, sampling controls and posterior summaries |
 | `src/PT.cpp` | PT tree, initialization, EM, shared conditional-base probabilities, output |
+| `src/PT_predict.cpp` | Restore fitted trees, evaluate predictions, and sample posterior leaf labels and Beta splits |
 | `R/MLE_estimate.R` | Parametric likelihoods, gradients, and optimization |
 | `R/data_example.R` | Simulation generators |
 | `tests/pt-conditional-base.R` | Conditional allocation, output, mass, and tail regression checks |
 | `tests/pt-uniform-exp.R` | Spliced-base CDF/quantile, allocation, density, tail, and interface checks |
+| `tests/pt-predict.R` | Fit/predict separation, analytic posterior checks, Gibbs sampling and reproducibility |
 
-`survPT()` provides point estimates. It does not return posterior samples, credible intervals, automatic tuning selection, or proof of convergence.
+Neither fitting nor prediction performs automatic tuning selection or certifies convergence.

@@ -31,13 +31,11 @@ BEGIN_RCPP
 END_RCPP
 }
 // SurvPT
-List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor);
-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP uniform_tail_factorSEXP) {
+List SurvPT(const arma::mat X, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor, const bool flat);
+RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP uniform_tail_factorSEXP, SEXP flatSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec >::type test_seq(test_seqSEXP);
     Rcpp::traits::input_parameter< const int >::type prior(priorSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type support(supportSEXP);
     Rcpp::traits::input_parameter< const int >::type max_M(max_MSEXP);
@@ -47,7 +45,24 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const double >::type EM_tol(EM_tolSEXP);
     Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
     Rcpp::traits::input_parameter< const double >::type uniform_tail_factor(uniform_tail_factorSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor));
+    Rcpp::traits::input_parameter< const bool >::type flat(flatSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPT(X, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor, flat));
+    return rcpp_result_gen;
+END_RCPP
+}
+// predict_survPT_cpp
+List predict_survPT_cpp(const List model, const arma::vec x, const int n_samples, const int burn_in, const int thin, const bool density);
+RcppExport SEXP _SurvPT_predict_survPT_cpp(SEXP modelSEXP, SEXP xSEXP, SEXP n_samplesSEXP, SEXP burn_inSEXP, SEXP thinSEXP, SEXP densitySEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const List >::type model(modelSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type x(xSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_samples(n_samplesSEXP);
+    Rcpp::traits::input_parameter< const int >::type burn_in(burn_inSEXP);
+    Rcpp::traits::input_parameter< const int >::type thin(thinSEXP);
+    Rcpp::traits::input_parameter< const bool >::type density(densitySEXP);
+    rcpp_result_gen = Rcpp::wrap(predict_survPT_cpp(model, x, n_samples, burn_in, thin, density));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -55,6 +70,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_SurvPT_OPT_right", (DL_FUNC) &_SurvPT_OPT_right, 9},
     {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 11},
+    {"_SurvPT_predict_survPT_cpp", (DL_FUNC) &_SurvPT_predict_survPT_cpp, 6},
     {NULL, NULL, 0}
 };
 

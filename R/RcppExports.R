@@ -5,7 +5,11 @@ OPT_right <- function(X, delta, test_seq, Rho, support, max_M, max_iter, iter_to
     .Call(`_SurvPT_OPT_right`, X, delta, test_seq, Rho, support, max_M, max_iter, iter_tol, verbose)
 }
 
-SurvPT <- function(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor = 1.1) {
-    .Call(`_SurvPT_SurvPT`, X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor)
+SurvPT <- function(X, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor = 1.1, flat = FALSE) {
+    .Call(`_SurvPT_SurvPT`, X, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor, flat)
+}
+
+predict_survPT_cpp <- function(model, x, n_samples, burn_in, thin, density) {
+    .Call(`_SurvPT_predict_survPT_cpp`, model, x, n_samples, burn_in, thin, density)
 }
 

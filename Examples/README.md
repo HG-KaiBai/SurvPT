@@ -30,9 +30,10 @@ Rscript Examples/quickstart.R
 Rscript tests/pt-conditional-base.R
 Rscript tests/pt-uniform-tail-factor.R
 Rscript tests/pt-uniform-exp.R
+Rscript tests/pt-predict.R
 ```
 
-The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior. They cover 20 mixed-censoring configurations for priors 1-3, uniform cutoff controls, and 24 configurations of the spliced uniform-exponential base, along with endpoint and interface checks. They do not run the full simulation studies.
+The regression tests check conditional allocations, survival and density output, probability conservation, and tail behavior. They cover 20 mixed-censoring configurations for priors 1-3, uniform cutoff controls, and 24 configurations of the spliced uniform-exponential base, along with endpoint and interface checks. Prediction checks compare exact and censored posterior draws with analytic distributions and verify reproducibility and fit/predict separation. They do not run the full simulation studies.
 
 ## Attribution
 

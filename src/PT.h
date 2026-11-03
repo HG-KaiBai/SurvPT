@@ -14,7 +14,6 @@ class PT {
 
 public:
     mat X; // data matrix
-    vec test_seq; // test sequence
     int prior; // 1: Uniform, 2: Exponential, 3: Weibull, 4: Uniform/exponential splice
     vec support; // support domain
     int max_M; // maximum level of tree
@@ -27,9 +26,11 @@ public:
     int max_EM_iter; // maximum number of EM iterations
     double EM_tol; // tolerance for EM convergence
     bool verbose; // print log info if true
+    bool flat; // use unit concentration parameters at every tree depth
 
     // constructor
-    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor);
+    PT(const mat X, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor, const bool flat = false);
+    PT(const List& model); // restore a fitted tree without fitting again
 
     // functions
     void init(); // initialize the first tree structure
@@ -44,6 +45,7 @@ public:
     void update_tree_size(); // double the size of the tree when necessary
     void EM_step(); // perform EM algorithm to update allocations and posterior probabilities
     List output(); // output results
+    List predict(const vec& x, int n_samples, int burn_in, int thin, bool density);
 
 private:
     void prepare_em_cache();
@@ -77,7 +79,6 @@ private:
     vec terminal_nodes; // indices of terminal nodes
     vec new_posterior_probs; // new posterior probabilities after update
     vec parent_nodes; // indices of parent nodes
-    vec survival_probs; // survival probabilities at test_seq
 };
 
 #endif

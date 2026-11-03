@@ -55,14 +55,15 @@ for (case in names(datasets)) {
     trajectory <- vector("list", length(iterations))
     for (j in seq_along(iterations)) {
       k <- iterations[j]
-      fit <- survPT(data[, c("L", "R")], test_seq = grid,
+      fit <- survPT(data[, c("L", "R")],
                     prior = spec$prior, prior_params = spec$params,
                     support = c(0, Inf), max_M = max_depth, allocated = 1,
                     max_EM_iter = k, EM_tol = em_tolerance, verbose = FALSE)
+      fit$Prediction <- predict(fit, grid, sample = FALSE)
       p_tail <- as.numeric(fit$Posterior_Probs[3])
       n_tail <- as.numeric(fit$Allocations[3])
       total_mass <- sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-      survival_tau <- tail(as.numeric(fit$Survival_Probs), 1)
+      survival_tau <- tail(as.numeric(fit$Prediction$estimate), 1)
       cat(sprintf(paste0("[%s / %s] max_EM_iter=%d, actual=%d, ",
                          "body=%.10g, tail=%.10g, tail_n=%.10g, total=%.10g, ",
                          "logLik=%.10g, converged=%s\n"),
@@ -87,7 +88,7 @@ for (case in names(datasets)) {
         expected_n_tail <- sum(1 / (1 + conditional_s)) # Prior mean p = 1/2.
         e_step_error <- n_tail - expected_n_tail
       } else if (!is.null(previous) && k == iterations[j - 1L] + 1L) {
-        old_survival <- head(as.numeric(previous$Survival_Probs), -1)
+        old_survival <- head(as.numeric(previous$Prediction$estimate), -1)
         stopifnot(all(old_survival > 0))
         expected_n_tail <- sum(as.numeric(previous$Posterior_Probs[3]) / old_survival)
         e_step_error <- n_tail - expected_n_tail

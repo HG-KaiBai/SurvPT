@@ -5,14 +5,12 @@
 \alias{SurvPT}
 \title{Low-level native finite Polya tree interface}
 \usage{
-SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
-  max_EM_iter, EM_tol, verbose, uniform_tail_factor = 1.1)
+SurvPT(X, prior, support, max_M, prior_params, allocated,
+  max_EM_iter, EM_tol, verbose, uniform_tail_factor = 1.1, flat = FALSE)
 }
 \arguments{
 \item{X}{Numeric matrix with left and right endpoints in its first two
 columns; see \code{\link{survPT}()} for supported observation encodings.}
-
-\item{test_seq}{Numeric evaluation points.}
 
 \item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull,
 or \code{4} uniform body with exponential tail.}
@@ -36,20 +34,26 @@ the uniform/exponential splice (\code{prior = 4}),
 \item{uniform_tail_factor}{Finite numeric scalar greater than 1, default
 \code{1.1}. Multiplier for the uniform base's finite tail cutoff; see
 \code{\link{survPT}()}. Used only for \code{prior = 1}.}
+
+\item{flat}{Logical scalar, default \code{FALSE}. If \code{TRUE}, all node prior
+parameters are 1. If \code{FALSE}, children at depth \code{m} use
+\code{alpha_m = max(1, 0.5 * m^2)}. The root parameter is always 1.}
 }
 \value{
 A list with native names: \code{left_bound}, \code{right_bound}, \code{node_levels},
 \code{alpha}, \code{n_obs_allocated}, \code{posterior_probs}, \code{terminal_nodes},
-\code{survival_probs}, and \code{density_probs}. The \code{alpha} component contains
+\code{parent_nodes}, and \code{largest_obs}. No prediction grid or probabilities
+are evaluated. The \code{alpha} component contains
 branch prior parameters. Native \code{terminal_nodes} indices are \strong{zero-based};
-add one before using them to index R arrays. Other components correspond
+add one before using them to index R arrays. \code{parent_nodes} also uses
+zero-based indices, with -1 for the root. Other components correspond
 to those documented for \code{\link{survPT}()}.
 }
 \description{
 Direct Rcpp entry point for the PT implementation. Most users should call
 \code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
-terminal-node indices to R indexing. This interface is retained for
-compatibility. All arguments except \code{uniform_tail_factor} are required.
+terminal-node indices to R indexing. This interface returns native tree arrays.
+All arguments except \code{uniform_tail_factor} and \code{flat} are required.
 }
 \details{
 Pass a numeric matrix as \code{X} and numeric vectors for vector arguments.

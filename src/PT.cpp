@@ -17,8 +17,8 @@ constexpr double SPLIT_EPSILON = 1e-6;
 
 
 // constructor
-PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor) :
-    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), uniform_tail_factor(uniform_tail_factor), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
+PT::PT(const mat X, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double uniform_tail_factor, const bool flat) :
+    X(X), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), uniform_tail_factor(uniform_tail_factor), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose), flat(flat) {
 
     if (!arma::is_finite(uniform_tail_factor) || uniform_tail_factor <= 1.0) {
         Rcpp::stop("uniform_tail_factor must be a finite number greater than 1.");
@@ -208,7 +208,7 @@ double PT::init_alpha(int level, double left, double right) {
     if (level <= 0) {
         Rcpp::stop("Level must be positive.");
     }
-    return std::max(1.0, pow(level, 2.0) * 0.5);
+    return flat ? 1.0 : std::max(1.0, pow(level, 2.0) * 0.5);
     // Uncomment below for prior-dependent alpha initialization
     // if (prior == 1) { // Uniform
     //     return std::max(1.0, pow(level, 2.0) * 0.5);
@@ -755,31 +755,6 @@ double PT::terminal_density(double t, double a, double b) const {
 }
 
 List PT::output() {
-    // compute survival probabilities and densities at test_seq by mixing over terminal nodes
-    survival_probs = vec(test_seq.n_elem, fill::zeros);
-    vec density_probs(test_seq.n_elem, fill::zeros);
-
-    for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
-        const double t = test_seq(i);
-        double s = 0.0;
-        double d = 0.0;
-
-        for (arma::uword r = 0; r < terminal_nodes.n_rows; ++r) {
-            const int node = static_cast<int>(terminal_nodes(r));
-            const double a = left_bound(node);
-            double b = right_bound(node);
-            const double w = posterior_probs(node);
-
-            d += w * terminal_density(t, a, b);
-
-            s += w * terminal_probability(t, arma::datum::inf, a, b);
-        }
-
-        // clamp numeric noise
-        survival_probs(i) = s;
-        density_probs(i) = d;
-    }
-
     return List::create(
         Named("left_bound") = left_bound.head(nodes_used+1),
         Named("right_bound") = right_bound.head(nodes_used+1),
@@ -788,8 +763,8 @@ List PT::output() {
         Named("n_obs_allocated") = n_obs_allocated.head(nodes_used+1),
         Named("posterior_probs") = posterior_probs.head(nodes_used+1),
         Named("terminal_nodes") = terminal_nodes,
-        Named("survival_probs") = survival_probs,
-        Named("density_probs") = density_probs
+        Named("parent_nodes") = parent_nodes.head(nodes_used+1),
+        Named("largest_obs") = largest_obs
     );
 }
 

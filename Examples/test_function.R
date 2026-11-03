@@ -18,22 +18,24 @@ x = seq(0, max(obs.mat), length.out = 201)
 true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
 #true.surv =  pgamma(x, 3, 1, lower.tail = FALSE)
 cat("Calling SurvPT with uniform prior...\n")
-result_unif <- survPT(test_data, test_seq = x, prior = 1,
+result_unif <- survPT(test_data, prior = 1,
                       max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6, uniform_tail_factor = 1.1)
 
 cat("Calling SurvPT with exponential prior...\n")
-result_exp <- survPT(test_data, test_seq = x, prior = 2, prior_params = exp_par,
+result_exp <- survPT(test_data, prior = 2, prior_params = exp_par,
                      max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 
 cat("Calling SurvPT with uniform body and exponential tail...\n")
-result_unif_exp <- survPT(test_data, test_seq = x, prior = 4, prior_params = exp_par,
+result_unif_exp <- survPT(test_data, prior = 4, prior_params = exp_par,
                           max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 
 # Retain the original survival SSE and probability-increment RMSE comparisons.
 pt_results <- list(Unif = result_unif, Exp = result_exp, UnifExp = result_unif_exp)
+pt_predictions <- lapply(pt_results, predict, x = x, sample = FALSE)
+pt_densities <- lapply(pt_results, predict, x = x, type = "density", sample = FALSE)
 pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
   fit <- pt_results[[method]]
-  survival <- as.numeric(fit$Survival_Probs)
+  survival <- pt_predictions[[method]]$estimate
   data.frame(
     Method = method,
     Terminal_Mass = sum(fit$Posterior_Probs[fit$Terminal_Nodes]),
@@ -137,7 +139,7 @@ fit_tbp <- function(data) {
 
 tryCatch({
   cat("Calling SurvOPT with uniform prior...\n")
-  result_opt <- survOPT(test_data$L, test_data$status, test_seq = x, max_M = 8)
+  result_opt <- survOPT(test_data$L, test_data$status, max_M = 8)
 
   cat("Success! Result structure:\n")
   print(str(result_opt))
@@ -152,7 +154,7 @@ for (l in 0:9){
 }
 print(sum(result_opt$Posterior_Probs[result_opt$Terminal_Nodes]))
 
-grid = result_unif$Test_seq
+grid = x
 #fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
 
 # Encode censoring for Surv(interval2), leaving test_data unchanged.
@@ -187,11 +189,11 @@ result_tbp$Density[grid > 0] <- as.numeric(tbp_curves$fhat[, 1L])
 
 kmf = icfit(test_data$L, test_data$R)
 plot(kmf)
-lines(result_unif$Test_seq, result_unif$Survival_Probs, col = "blue", lwd = 2)
-lines(result_exp$Test_seq, result_exp$Survival_Probs, col = "orange", lwd = 2)
-lines(result_unif_exp$Test_seq, result_unif_exp$Survival_Probs, col = "magenta3", lwd = 2)
+lines(x, pt_predictions$Unif$estimate, col = "blue", lwd = 2)
+lines(x, pt_predictions$Exp$estimate, col = "orange", lwd = 2)
+lines(x, pt_predictions$UnifExp$estimate, col = "magenta3", lwd = 2)
 #lines(result_opt$Test_seq, result_opt$Survival_Probs, col = "green", lwd = 2)
-lines(result_unif$Test_seq, 1-pweibull(result_unif$Test_seq, K, 1/Lambda), col = "red", lwd = 2)
+lines(x, 1-pweibull(x, K, 1/Lambda), col = "red", lwd = 2)
 #lines(grid, 1 - fid$point_li, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Survival_Probs, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Survival_Probs, col = "cyan4", lwd = 2)
@@ -199,10 +201,10 @@ legend("topright", legend = c("Kaplan-Meier", "SurvPT Unif", "SurvPT Exp", "Surv
        col = c("black", "blue", "orange", "magenta3", "green", "red", "purple", "brown", "cyan4"), lwd = 2)
 
 
-plot(result_unif$Test_seq, dweibull(result_unif$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
-lines(result_unif$Test_seq, result_unif$Density, col = "blue", lwd = 2)
-lines(result_exp$Test_seq, result_exp$Density, col = "orange", lwd = 2)
-lines(result_unif_exp$Test_seq, result_unif_exp$Density, col = "magenta3", lwd = 2)
+plot(x, dweibull(x, K, 1/Lambda), type = "l", col = "red", lwd = 2)
+lines(x, pt_densities$Unif$estimate, col = "blue", lwd = 2)
+lines(x, pt_densities$Exp$estimate, col = "orange", lwd = 2)
+lines(x, pt_densities$UnifExp$estimate, col = "magenta3", lwd = 2)
 lines(result_opt$Test_seq, result_opt$Density, col = "green", lwd = 2)
 #lines(grid, fid$density, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Density, col = "brown", lwd = 2)

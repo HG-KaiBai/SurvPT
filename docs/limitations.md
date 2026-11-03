@@ -6,7 +6,7 @@
 
 | Limitation | Practical consequence |
 | --- | --- |
-| `survPT()` returns point estimates only | No built-in confidence bands, posterior draws, or convergence flag |
+| Posterior prediction conditions on a fixed tree and base parameters | Pointwise credible intervals do not include partition or base-parameter estimation uncertainty; no automatic MCMC convergence check |
 | Inputs are univariate with no covariates | No multivariate joint survival or regression interface |
 | No sampling-truncation or delayed-entry arguments | Do not treat the `support` setting as a delayed-entry correction |
 | Uniform PT uses a data-dependent upper cutoff | Its estimated survival becomes zero beyond that cutoff |
@@ -35,7 +35,7 @@ These limitations are documented to distinguish observed software behavior from 
 
 **The loaded version is not the installed version.** Restart R, run `find.package("SurvPT")`, inspect `.libPaths()`, and reinstall into the intended library. `devtools::load_all()` uses a checkout, whereas `library(SurvPT)` loads an installed package.
 
-**An evaluation grid cannot be generated.** Check that the first two data columns contain finite observation endpoints, or supply a finite sorted `test_seq`. The PT default grid includes right-censoring times and works for all-right-censored data with finite left endpoints. Such data may still contain insufficient information for the intended fit.
+**An old call with `test_seq` fails.** Fit with `model <- survPT(data, ...)`, then call `predict(model, x)`. The `estimate` column replaces the former survival output. Use `sample = FALSE` when only the point estimate is needed.
 
 **“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
 

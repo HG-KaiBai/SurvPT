@@ -30,10 +30,11 @@ simu <- function(t, n, K, Lambda, q, type){
 
   for (prior in c(1, 2)){
     start_time <- Sys.time()
-    fit = survPT(data, test_seq = x, prior = prior, prior_params = exp_par, EM_tol = 1e-4, verbose = T)
+    fit = survPT(data, prior = prior, prior_params = exp_par, EM_tol = 1e-4, verbose = T)
+    survival <- predict(fit, x, sample = FALSE)$estimate
     pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
     time = c(time, pt_time)
-    err = sum((fit$Survival_Probs - true.surv)^2)
+    err = sum((survival - true.surv)^2)
     sse = c(sse, err)
   }
 

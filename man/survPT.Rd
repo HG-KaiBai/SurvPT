@@ -6,7 +6,6 @@
 \usage{
 survPT(
   X,
-  test_seq = NULL,
   prior = 1,
   support = c(0, Inf),
   max_M = 8,
@@ -15,7 +14,8 @@ survPT(
   max_EM_iter = 100,
   EM_tol = 1e-06,
   verbose = TRUE,
-  uniform_tail_factor = 1.1
+  uniform_tail_factor = 1.1,
+  flat = FALSE
 )
 }
 \arguments{
@@ -24,11 +24,6 @@ left and right observation endpoints, in that order. Additional columns
 are ignored. Use \code{L == R} for an exact event, \code{R = Inf} for right censoring,
 and \code{L = 0} for an event observed before a positive inspection time.
 A status column is not used. Missing values are not supported.}
-
-\item{test_seq}{Numeric evaluation points, preferably a sorted finite grid.
-If \code{NULL}, uses 200 points from \code{support[1]} to the largest finite endpoint
-in the first two columns of \code{X}, including right-censoring times.
-Supply a grid explicitly when comparing fits.}
 
 \item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
 \code{3} for Weibull, or \code{4} for a uniform body with an exponential tail.}
@@ -63,35 +58,43 @@ change in terminal-node masses. No convergence flag is returned.}
 endpoint when replacing an infinite bound in partitioning, initialization,
 EM allocation, and prediction. Used only for \code{prior = 1}.
 With finite support, keep observation endpoints within that support.}
+
+\item{flat}{Logical scalar, default \code{FALSE}. If \code{TRUE}, all node prior
+parameters are 1. If \code{FALSE}, children at depth \code{m} use
+\code{alpha_m = max(1, 0.5 * m^2)}. The root parameter is always 1.}
 }
 \value{
-A list with the following components. Armadillo vectors can appear
+An S3 object of class \code{survPT} with the following components.
+Armadillo vectors can appear
 as one-column matrices; use \code{as.numeric()} if a plain vector is needed.
 \describe{
 \item{Left, Right}{Node interval boundaries.}
 \item{Level}{Node depths, with the root at zero.}
+\item{Alpha}{Node prior Beta parameters, including the root placeholder.}
+\item{Parent}{One-based parent indices; the root has parent zero.}
 \item{Allocations}{Allocated observation counts, possibly fractional.}
 \item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
 \item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
 masses at these indices to check total probability.}
-\item{Test_seq}{The evaluation grid.}
-\item{Survival_Probs}{Estimated survival probabilities at the grid.}
-\item{Density}{Estimated density at the grid.}
-\item{Prior_Params, Tail_Start}{For \code{prior = 4} only: the supplied
-exponential rate and splice point \code{M}.}
+\item{X}{The two observation endpoint columns, retained for posterior sampling.}
+\item{Prior, Support, Max_M, Prior_Params, Allocated, Uniform_Tail_Factor, Flat}{
+The fitting configuration needed for prediction.}
+\item{Largest_Obs}{Largest finite observation endpoint.}
+\item{Tail_Start}{For \code{prior = 4} only: the splice point \code{M}.}
 }
-The wrapper does not return \code{Alpha}, posterior samples, or convergence
-diagnostics.
+No evaluation grid is constructed. The object contains ordinary R data
+and can be saved with \code{saveRDS()} and restored with \code{readRDS()}.
 }
 \description{
-Estimate a univariate survival function and density from exact, interval-
+Fit a univariate survival model from exact, interval-
 censored, right-censored, or current-status observations. The partition is
 fixed after initialization; the default fit iteratively reallocates censored
 observations using conditional terminal-node base distributions.
+Evaluation times and posterior sampling are handled by \code{\link{predict.survPT}()}.
 }
 \details{
-Since version 0.2.0, EM allocation probabilities and the returned survival
-function and density use the same selected base distribution conditioned on
+EM allocation probabilities and predictions use the same selected base
+distribution conditioned on
 each terminal interval. The exponential base survival is \code{exp(-lambda * t)};
 the Weibull base survival is \code{exp(-(lambda * t)^k)}.
 A uniform terminal interval with an infinite right endpoint is capped at
@@ -102,7 +105,7 @@ This cutoff does not replace \code{Inf} in the returned \code{Right} boundaries.
 
 For \code{prior = 4}, let \code{M} be the largest finite endpoint in the first two
 columns of \code{X} and \code{lambda = prior_params[1]}. The base CDF is
-\code{(1 - exp(-lambda * M)) * t / M} on \code{[0, M]}, and
+\code{(1 - exp(-lambda * M)) * t / M} on \verb{[0, M]}, and
 \code{1 - exp(-lambda * t)} for \code{t > M}. Its survival at \code{M} is
 \code{exp(-lambda * M)}. The CDF is continuous; the density may jump at \code{M},
 where the left-hand density is returned. Splits bisect this base probability,
@@ -118,22 +121,24 @@ when \code{a = 0}; exact events at positive split points belong to the left node
 Input validation is incomplete: check numeric types, missing values,
 endpoint ordering, support compatibility, and integer iteration controls.
 
-Branch masses use a clipped, mode-style update with depth-dependent prior
-parameters \code{alpha_m = max(1, 0.5 * m^2)} for children at depth \code{m}.
+Branch masses use a clipped, mode-style update with prior parameters
+\code{alpha_m = max(1, 0.5 * m^2)} for children at depth \code{m} by default,
+or \code{alpha_m = 1} at every depth when \code{flat = TRUE}.
 During initialization and EM, conditional split probabilities are bounded
-by \code{[epsilon, 1 - epsilon]}, with \code{epsilon = 1e-6}. These are not posterior
+by \verb{[epsilon, 1 - epsilon]}, with \code{epsilon = 1e-6}. These are not posterior
 draws or the usual posterior-mean update.
-The function does not estimate uncertainty intervals, covariate effects,
-multivariate distributions, or a sampling-truncation likelihood.
+The fit does not generate predictions or posterior draws. Use \code{predict()}
+for point estimates and pointwise posterior summaries. Covariate effects,
+multivariate distributions and sampling-truncation likelihoods are not supported.
 }
 \examples{
 x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
                 R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
 fit <- survPT(x, prior = 2, prior_params = 0.5,
-              test_seq = seq(0, 6, length.out = 31),
               max_M = 4, max_EM_iter = 30, verbose = FALSE)
 sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-head(as.numeric(fit$Survival_Probs))
+set.seed(123)
+head(predict(fit, seq(0, 6, length.out = 31), level = 0.95))
 }
 \seealso{
 \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},

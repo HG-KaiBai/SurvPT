@@ -44,9 +44,9 @@ rate <- estimate_exp(d$L, d$R)
 weibull <- estimate(d$L, d$R)  # c(lambda, k)
 
 fit_exp <- survPT(d[, c("L", "R")], prior = 2, prior_params = rate,
-                  test_seq = grid, max_M = 6, verbose = FALSE)
+                  max_M = 6, verbose = FALSE)
 fit_weibull <- survPT(d[, c("L", "R")], prior = 3,
-                      prior_params = weibull, test_seq = grid,
+                      prior_params = weibull,
                       max_M = 6, verbose = FALSE)
 ```
 
@@ -58,7 +58,7 @@ The body receives probability `1 - exp(-rate * M)` and is uniform conditional on
 The tail receives probability `exp(-rate * M)` and, conditional on exceeding `M`,
 has distribution `M + Exp(rate)`. The base CDF is continuous, although the density
 can jump at `M`. A finite upper support conditions and truncates this base as usual.
-The result includes `Prior_Params` and `Tail_Start` for this prior only.
+The result includes `Prior_Params` for every prior and `Tail_Start` for this prior only.
 
 ## Choose support and evaluation points
 
@@ -71,13 +71,14 @@ fit_uniform <- survPT(x, prior = 1, uniform_tail_factor = 1.5,
 
 Use a finite upper support only when a finite event-time bound is part of the model. In that case, keep observation intervals within that support, including replacing an infinite observation endpoint with the known bound. Do not discard observations merely to force a finite support. Initial allocation can fail to conserve counts for intervals extending beyond the declared support.
 
-Supply `test_seq` explicitly for reproducible comparisons. The PT default grid uses 200 points from the lower support bound to the largest finite endpoint in the first two columns of the data, including right-censoring times. It can therefore be constructed from an entirely right-censored sample with finite censoring times. For plotting, choose a sorted finite grid. Fitting is unchanged by the choice of evaluation grid.
+`survPT()` does not accept `test_seq` or construct a grid. Supply the vector of evaluation times to `predict(fit, x)`. The same fitted model can be evaluated on multiple grids without refitting. Unsorted times and duplicates are preserved; use a sorted finite grid for plotting.
 
 ## Control tree size and iteration
 
 - `max_M` is the maximum depth, with the root at level zero. Start with a modest nonnegative integer, such as 6 or the default 8. Large depths can exhaust memory or exceed integer-shift limits.
 - A node also stops splitting when its **initial allocated count is below one**. The partition is fixed during subsequent updates.
 - `max_EM_iter` and `EM_tol` control allocation iterations.
+- `flat = TRUE` uses unit Beta prior parameters at all depths; `FALSE` (default) uses `max(1, 0.5 * m^2)` at depth `m`.
 - The stopping criterion is the Euclidean norm of the change in terminal masses. It is not a likelihood or parameter-distance criterion.
 - `verbose = TRUE` prints progress. The returned list contains no convergence flag, iteration count, or objective history.
 - PT `allocated = 0` selects the legacy overlap-count initialization and skips EM. It is a different estimator, not a speed setting for the default fit.
@@ -88,27 +89,32 @@ Supply `test_seq` explicitly for reproducible comparisons. The PT default grid u
 | --- | --- |
 | `Left`, `Right` | Node interval boundaries; the last right boundary may still be `Inf` even when uniform PT uses a finite effective cutoff |
 | `Level` | Depth of each node; root is zero |
+| `Alpha`, `Parent` | Prior Beta parameters and one-based parent indices (zero for the root) |
 | `Allocations` | Fractional counts assigned to nodes at the returned iteration |
 | `Posterior_Probs` | Estimated node masses for both internal and terminal nodes |
 | `Terminal_Nodes` | **One-based R indices** of terminal nodes |
-| `Test_seq` | Evaluation points supplied to the fit |
-| `Survival_Probs` | Estimated `P(T > t)` at those points |
-| `Density` | Estimated density at those points |
+| `X` | Observation endpoints retained for posterior sampling |
+| `Prior`, `Prior_Params`, `Support`, `Largest_Obs` | Base distribution settings needed for prediction |
 
-The user-facing PT wrapper does not return `Alpha`. Numeric arrays from RcppArmadillo may have one column; `as.numeric()` removes those dimensions. Sum only terminal masses when checking total probability:
+The fit is an S3 object of class `survPT` and can be saved with `saveRDS()`. Numeric arrays from RcppArmadillo may have one column; `as.numeric()` removes those dimensions. Sum only terminal masses when checking total probability:
 
 ```r
 idx <- fit_exp$Terminal_Nodes
 stopifnot(abs(sum(fit_exp$Posterior_Probs[idx]) - 1) < 1e-8)
-summary_table <- data.frame(
-  time = fit_exp$Test_seq,
-  survival = as.numeric(fit_exp$Survival_Probs),
-  density = as.numeric(fit_exp$Density)
-)
+set.seed(123)
+summary_table <- predict(fit_exp, grid, level = 0.95)
 head(summary_table)
+# Point estimates only, with no posterior simulation:
+predict(fit_exp, grid, sample = FALSE)
+# Density predictions are also available:
+predict(fit_exp, grid, type = "density", sample = FALSE)
 ```
 
-The field name `Posterior_Probs` does not imply posterior simulation or uncertainty intervals. PT currently uses a clipped, mode-style branch-mass update; [Methods](methods.md) describes the formula.
+The prediction columns are `x`, `estimate`, `lower`, `upper`, `mean`, and `median`. `estimate` is the fitted MAP-EM distribution evaluated at `x`, using the same formula as the former `Survival_Probs` output. It is not a marginal posterior mode or a Monte Carlo mean. The other columns summarize the posterior of `S(x)` (or density for `type = "density"`), not event-time means or medians. Intervals are pointwise and equal-tailed, conditional on the fitted partition and base parameters.
+
+Each call uses 3,000 burn-in sweeps and 5,000 retained draws by default (8,000 total sweeps with the default thinning). Change `burn_in`, `n_samples`, and `thin` as needed. Set a seed for reproducibility; `keep_samples = TRUE` attaches the draws as `attr(result, "samples")`, with draws in rows and times in columns. Inspect mixing and Monte Carlo stability for substantive analyses. For `sample = FALSE`, only `x` and `estimate` are returned. The model is not modified by prediction.
+
+The field `Posterior_Probs` stores the fitted node masses; posterior samples are generated separately by `predict()`. [Methods](methods.md) describes both updates.
 
 ## Simulation helpers
 

@@ -1,5 +1,12 @@
 library(SurvPT)
 
+# Evaluate the fitted model separately, without Monte Carlo for deterministic checks.
+evaluate_fit <- function(model, points) {
+    model$Survival_Probs <- predict(model, points, sample = FALSE)$estimate
+    model$Density <- predict(model, points, type = "density", sample = FALSE)$estimate
+    model
+}
+
 assert_close <- function(actual, expected, label, tolerance = 1e-9) {
     error <- max(abs(actual - expected))
     if (!is.finite(error) || error > tolerance) stop(label, ': error = ', error)
@@ -49,9 +56,10 @@ for (finite in c(FALSE, TRUE)) for (depth in c(0, 1, 5)) {
         points <- sort(unique(c(-1, 0, seq(0, 9, length.out = 35), M - 1e-8,
                                 M, M + 1e-8, M + 1/rate, Inf)))
         fit_at <- function(iterations, grid = points) {
-            survPT(cbind(data, ignored = 9999), prior = 4, prior_params = rate,
+            model <- survPT(cbind(data, ignored = 9999), prior = 4, prior_params = rate,
                    support = c(0, if (finite) 6 else Inf), max_M = depth,
-                   max_EM_iter = iterations, EM_tol = 0, test_seq = grid, verbose = FALSE)
+                   max_EM_iter = iterations, EM_tol = 0, verbose = FALSE)
+            evaluate_fit(model, grid)
         }
         fits <- lapply(c(0, 1, 2, 15), fit_at)
         for (step in 1:3) {
@@ -119,14 +127,15 @@ for (finite in c(FALSE, TRUE)) for (depth in c(0, 1, 5)) {
 boundary <- rbind(c(0, 0), c(1, 1), c(2, 2), c(2, Inf))
 rate <- log(2)/2
 fit <- survPT(boundary, prior = 4, prior_params = rate, max_M = 1,
-              max_EM_iter = 0, test_seq = c(2, 2 + 1e-8), verbose = FALSE)
+              max_EM_iter = 0, verbose = FALSE)
 assert_close(fit$Right[2], 2, 'Splice cut point')
 assert_close(as.numeric(fit$Allocations[2:3]), c(3, 1), 'Splice allocation')
 
 # Tail CDFs round to one here; survival-scale inversion must still split.
 tail_data <- matrix(c(1, Inf), 1, 2)
 tail <- survPT(tail_data, prior = 4, prior_params = 100, support = c(1, Inf),
-               max_M = 1, max_EM_iter = 2, test_seq = c(1, 1.01, 1.1), verbose = FALSE)
+               max_M = 1, max_EM_iter = 2, verbose = FALSE)
+tail <- evaluate_fit(tail, c(1, 1.01, 1.1))
 assert_close(tail$Right[2], 1 + log(2)/100, 'Extreme-tail median')
 stopifnot(length(tail$Terminal_Nodes) == 2L, all(is.finite(tail$Survival_Probs)))
 
@@ -134,12 +143,12 @@ stopifnot(length(tail$Terminal_Nodes) == 2L, all(is.finite(tail$Survival_Probs))
 for (allocated in 0:1) {
     args <- list(X = observations, prior = 4, prior_params = 0.5,
                  allocated = allocated, max_M = 5, max_EM_iter = 5,
-                 test_seq = c(0, 4, 10), verbose = FALSE)
+                 verbose = FALSE)
     wrapped <- do.call(survPT, args)
-    stopifnot(identical(wrapped, do.call(survPT, c(args, list(uniform_tail_factor = 2)))))
+    stopifnot(identical(wrapped$Posterior_Probs, do.call(survPT, c(args, list(uniform_tail_factor = 2)))$Posterior_Probs))
     raw <- do.call(SurvPT, c(args, list(support = c(0, Inf), EM_tol = 1e-6)))
     stopifnot(identical(wrapped$Allocations, raw$n_obs_allocated),
-              identical(wrapped$Survival_Probs, raw$survival_probs))
+              identical(wrapped$Posterior_Probs, raw$posterior_probs))
     assert_close(as.numeric(raw$alpha), pmax(1, 0.5 * as.numeric(raw$node_levels)^2), 'Prior alpha')
 }
 for (bad in list(NULL, numeric(), c(0.5, 1), NA_real_, NaN, Inf, 0, -1, '0.5', 1i)) {

@@ -46,8 +46,8 @@ pt_boot <- function(data, B = 1000){
   x = seq(0, max(obs.mat), by = max(obs.mat)/200)
   exp_par = estimate_exp(data[,1], data[,2])
 
-  fit = survPT(data, test_seq = x, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
-  surv_probs = fit$Survival_Probs
+  fit = survPT(data, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
+  surv_probs = predict(fit, x, sample = FALSE)$estimate
 
 
   n_cores <- parallel::detectCores()
@@ -55,8 +55,8 @@ pt_boot <- function(data, B = 1000){
     indices = sample(1:n, n, replace = TRUE)
     boot_data = data[indices, ]
     exp_par = estimate_exp(data[,1], data[,2])
-    boot_fit = survPT(boot_data, test_seq = x, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
-    return(c(boot_fit$Survival_Probs))
+    boot_fit = survPT(boot_data, prior = 1, prior_params = exp_par, EM_tol = 1e-6, verbose = F)
+    return(predict(boot_fit, x, sample = FALSE)$estimate)
   }, mc.cores = 1)
 
   boot_surv = do.call(rbind, boot_surv_list)

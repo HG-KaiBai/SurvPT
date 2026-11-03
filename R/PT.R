@@ -1,9 +1,10 @@
 #' Fit a finite Polya tree to censored event times
 #'
-#' Estimate a univariate survival function and density from exact, interval-
+#' Fit a univariate survival model from exact, interval-
 #' censored, right-censored, or current-status observations. The partition is
 #' fixed after initialization; the default fit iteratively reallocates censored
 #' observations using conditional terminal-node base distributions.
+#' Evaluation times and posterior sampling are handled by \code{\link{predict.survPT}()}.
 #'
 #' @param X Numeric matrix or data frame whose first two columns contain the
 #'   left and right observation endpoints, in that order. Additional columns
@@ -30,19 +31,18 @@
 #' @param EM_tol Nonnegative stopping tolerance for the Euclidean norm of the
 #'   change in terminal-node masses. No convergence flag is returned.
 #' @param verbose Logical; print iteration progress if `TRUE`.
-#' @param test_seq Numeric evaluation points, preferably a sorted finite grid.
-#'   If `NULL`, uses 200 points from `support[1]` to the largest finite endpoint
-#'   in the first two columns of `X`, including right-censoring times.
-#'   Supply a grid explicitly when comparing fits.
 #' @param uniform_tail_factor Finite numeric scalar greater than 1, default
 #'   `1.1`. For a uniform base, multiplies the largest finite observation
 #'   endpoint when replacing an infinite bound in partitioning, initialization,
 #'   EM allocation, and prediction. Used only for `prior = 1`.
 #'   With finite support, keep observation endpoints within that support.
+#' @param flat Logical scalar, default `FALSE`. If `TRUE`, all node prior
+#'   parameters are 1. If `FALSE`, children at depth `m` use
+#'   `alpha_m = max(1, 0.5 * m^2)`. The root parameter is always 1.
 #'
 #' @details
-#' Since version 0.2.0, EM allocation probabilities and the returned survival
-#' function and density use the same selected base distribution conditioned on
+#' EM allocation probabilities and predictions use the same selected base
+#' distribution conditioned on
 #' each terminal interval. The exponential base survival is `exp(-lambda * t)`;
 #' the Weibull base survival is `exp(-(lambda * t)^k)`.
 #' A uniform terminal interval with an infinite right endpoint is capped at
@@ -69,31 +69,36 @@
 #' Input validation is incomplete: check numeric types, missing values,
 #' endpoint ordering, support compatibility, and integer iteration controls.
 #'
-#' Branch masses use a clipped, mode-style update with depth-dependent prior
-#' parameters `alpha_m = max(1, 0.5 * m^2)` for children at depth `m`.
+#' Branch masses use a clipped, mode-style update with prior parameters
+#' `alpha_m = max(1, 0.5 * m^2)` for children at depth `m` by default,
+#' or `alpha_m = 1` at every depth when `flat = TRUE`.
 #' During initialization and EM, conditional split probabilities are bounded
 #' by `[epsilon, 1 - epsilon]`, with `epsilon = 1e-6`. These are not posterior
 #' draws or the usual posterior-mean update.
-#' The function does not estimate uncertainty intervals, covariate effects,
-#' multivariate distributions, or a sampling-truncation likelihood.
+#' The fit does not generate predictions or posterior draws. Use `predict()`
+#' for point estimates and pointwise posterior summaries. Covariate effects,
+#' multivariate distributions and sampling-truncation likelihoods are not supported.
 #'
-#' @return A list with the following components. Armadillo vectors can appear
+#' @return An S3 object of class `survPT` with the following components.
+#'   Armadillo vectors can appear
 #'   as one-column matrices; use `as.numeric()` if a plain vector is needed.
 #'   \describe{
 #'     \item{Left, Right}{Node interval boundaries.}
 #'     \item{Level}{Node depths, with the root at zero.}
+#'     \item{Alpha}{Node prior Beta parameters, including the root placeholder.}
+#'     \item{Parent}{One-based parent indices; the root has parent zero.}
 #'     \item{Allocations}{Allocated observation counts, possibly fractional.}
 #'     \item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
 #'     \item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
 #'       masses at these indices to check total probability.}
-#'     \item{Test_seq}{The evaluation grid.}
-#'     \item{Survival_Probs}{Estimated survival probabilities at the grid.}
-#'     \item{Density}{Estimated density at the grid.}
-#'     \item{Prior_Params, Tail_Start}{For `prior = 4` only: the supplied
-#'       exponential rate and splice point `M`.}
+#'     \item{X}{The two observation endpoint columns, retained for posterior sampling.}
+#'     \item{Prior, Support, Max_M, Prior_Params, Allocated, Uniform_Tail_Factor, Flat}{
+#'       The fitting configuration needed for prediction.}
+#'     \item{Largest_Obs}{Largest finite observation endpoint.}
+#'     \item{Tail_Start}{For `prior = 4` only: the splice point `M`.}
 #'   }
-#'   The wrapper does not return `Alpha`, posterior samples, or convergence
-#'   diagnostics.
+#'   No evaluation grid is constructed. The object contains ordinary R data
+#'   and can be saved with `saveRDS()` and restored with `readRDS()`.
 #' @seealso \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
 #'   \code{\link{SurvPT}()} for the low-level interface.
 #' @export
@@ -102,31 +107,49 @@
 #' x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
 #'                 R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
 #' fit <- survPT(x, prior = 2, prior_params = 0.5,
-#'               test_seq = seq(0, 6, length.out = 31),
 #'               max_M = 4, max_EM_iter = 30, verbose = FALSE)
 #' sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-#' head(as.numeric(fit$Survival_Probs))
-survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE, uniform_tail_factor = 1.1) {
+#' set.seed(123)
+#' head(predict(fit, seq(0, 6, length.out = 31), level = 0.95))
+survPT <- function(X, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE, uniform_tail_factor = 1.1, flat = FALSE) {
+    if (!is.logical(flat) || length(flat) != 1L || is.na(flat)) {
+        stop("flat must be TRUE or FALSE.")
+    }
     if (!is.numeric(uniform_tail_factor) || length(uniform_tail_factor) != 1L ||
         !is.finite(uniform_tail_factor) || uniform_tail_factor <= 1) {
         stop("uniform_tail_factor must be a finite number greater than 1.")
     }
     X = as.matrix(X)
     # The first column and second column of X are the observed left bound and right bound, respectively.
-    if (!is.matrix(X) || ncol(X) < 2 || (any(X[,2] < X[,1]))) {
-        stop("Invalid input data X.")
+    if (!is.numeric(X) || is.complex(X) || nrow(X) == 0L || ncol(X) < 2L ||
+        anyNA(X[, 1:2]) || any(!is.finite(X[, 1])) || any(X[, 1] < 0) ||
+        any(X[, 2] < X[, 1])) {
+        stop("X must contain nonempty, nonmissing, ordered endpoints with finite nonnegative left endpoints.")
     }
-    if (! is.numeric(prior) || length(prior) != 1 || prior %in% c(1, 2, 3, 4) == FALSE){
+    X <- X[, 1:2, drop = FALSE]
+    if (!is.numeric(prior) || length(prior) != 1L || is.na(prior) || !prior %in% 1:4) {
         stop("Invalid input prior.")
     }
-    if (prior == 2 && (length(prior_params) != 1 || any(prior_params <= 0))) {
-        stop("Please provide a single prior parameter for Exponential prior.")
+    if (prior != 1 && (!is.numeric(prior_params) || is.complex(prior_params) ||
+        length(prior_params) != (if (prior == 3) 2L else 1L) ||
+        any(!is.finite(prior_params)) || any(prior_params <= 0))) {
+        stop("Provide finite positive prior_params: c(rate, shape) for Weibull, or one rate otherwise.")
     }
-    if (prior == 3 && (length(prior_params) != 2 || any(prior_params <= 0))) {
-        stop("Please provide two positive prior parameters for Weibull prior.")
-    }
-    if (! is.numeric(support) || length(support) != 2 || support[1] >= support[2]) {
+    if (!is.numeric(support) || is.complex(support) || length(support) != 2L ||
+        anyNA(support) || !is.finite(support[1]) || support[1] < 0 || support[1] >= support[2]) {
         stop("Invalid input support.")
+    }
+    .survpt_integer(max_M, "max_M", 0, 30)
+    .survpt_integer(max_EM_iter, "max_EM_iter", 0)
+    .survpt_integer(allocated, "allocated", 0, 1)
+    if (!is.numeric(EM_tol) || length(EM_tol) != 1L || !is.finite(EM_tol) || EM_tol < 0) {
+        stop("EM_tol must be a finite nonnegative scalar.")
+    }
+    exact <- X[, 1] == X[, 2]
+    if (any(exact & (X[, 1] < support[1] | X[, 1] > support[2] |
+                    (support[1] > 0 & X[, 1] == support[1]))) ||
+        any(!exact & (X[, 2] <= support[1] | X[, 1] >= support[2]))) {
+        stop("Every observation must have positive overlap with the support.")
     }
 
     if (prior == 4) {
@@ -148,34 +171,34 @@ survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8
         }
     }
 
-    if (is.null(test_seq)){
-        endpoints = X[, 1:2, drop = FALSE]
-        finite_endpoints = endpoints[is.finite(endpoints)]
-        if (length(finite_endpoints) == 0) {
-            stop("Cannot construct a default prediction grid without finite observation endpoints.")
-        }
-        test_seq = seq(support[1], max(finite_endpoints), length.out = 200)
-    }
-
     # Handle NULL prior_params for uniform prior
     if (prior == 1 && is.null(prior_params)) {
         prior_params = c(0.12, 1)  # Default values, not used for uniform prior
     }
 
-    out = SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor)
+    out = SurvPT(X, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, uniform_tail_factor, flat)
     out_PT = list("Left" = out$left_bound,
                   "Right" = out$right_bound,
                   "Level" = out$node_levels,
+                  "Alpha" = out$alpha,
+                  "Parent" = out$parent_nodes + 1,
                   "Allocations" = out$n_obs_allocated,
                   "Posterior_Probs" = out$posterior_probs,
                   "Terminal_Nodes" = out$terminal_nodes + 1,
-                  "Test_seq" = test_seq,
-                  "Survival_Probs" = out$survival_probs,
-                  "Density" = out$density_probs
+                  "X" = X,
+                  "Prior" = prior,
+                  "Support" = support,
+                  "Max_M" = max_M,
+                  "Prior_Params" = prior_params,
+                  "Allocated" = allocated,
+                  "Uniform_Tail_Factor" = uniform_tail_factor,
+                  "Flat" = flat,
+                  "Largest_Obs" = out$largest_obs
                   )
     if (prior == 4) {
         out_PT$Prior_Params <- as.numeric(prior_params)
         out_PT$Tail_Start <- tail_start
     }
+    class(out_PT) <- "survPT"
     return(out_PT)
 }

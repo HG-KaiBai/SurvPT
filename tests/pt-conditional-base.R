@@ -1,5 +1,12 @@
 library(SurvPT)
 
+# Evaluate the fitted model separately, without Monte Carlo for deterministic checks.
+evaluate_fit <- function(model, points) {
+    model$Survival_Probs <- predict(model, points, sample = FALSE)$estimate
+    model$Density <- predict(model, points, type = "density", sample = FALSE)$estimate
+    model
+}
+
 assert_close <- function(actual, expected, label, tolerance = 1e-10) {
     error <- max(abs(actual - expected))
     if (!is.finite(error) || error > tolerance) {
@@ -13,10 +20,11 @@ observations <- rbind(cbind(times, times), c(0, 0.3), c(0.1, 1.5),
                       c(1, 3), c(0.9, Inf), c(2.6, Inf))
 
 fit_pt <- function(data, prior, support, depth, iterations, points, uniform_tail_factor = 1.1) {
-    survPT(data, prior = prior, support = support, max_M = depth,
+    model <- survPT(data, prior = prior, support = support, max_M = depth,
            prior_params = switch(prior, NULL, 1, c(1, 2)),
-           max_EM_iter = iterations, EM_tol = 0, test_seq = points,
+           max_EM_iter = iterations, EM_tol = 0,
            verbose = FALSE, uniform_tail_factor = uniform_tail_factor)
+    evaluate_fit(model, points)
 }
 
 # Independent reference distributions use R's distribution functions.
@@ -162,7 +170,7 @@ for (prior in 1:3) {
     params <- switch(prior, NULL, 1, c(1, 2))
     probe <- survPT(rbind(c(0, 0), c(2, 2)), prior = prior, prior_params = params,
                     support = c(0, 2), max_M = 1, max_EM_iter = 0,
-                    test_seq = c(0, 2), verbose = FALSE)
+                    verbose = FALSE)
     split <- as.numeric(probe$Right[2])
     exact_times <- c(0, 0, split, split, 2)
     data <- cbind(exact_times, exact_times)
@@ -171,7 +179,8 @@ for (prior in 1:3) {
     for (allocated in 0:1) for (depth in c(1, 3)) for (iterations in c(0, 5)) {
         fit <- survPT(data, prior = prior, prior_params = params,
                       support = c(0, 2), max_M = depth, allocated = allocated,
-                      max_EM_iter = iterations, test_seq = points, verbose = FALSE)
+                      max_EM_iter = iterations, verbose = FALSE)
+        fit <- evaluate_fit(fit, points)
         assert_close(as.vector(fit$Allocations[1:3]), c(5, 4, 1),
                      "zero and split-point allocations")
         assert_close(sum(fit$Allocations[fit$Terminal_Nodes]), 5,
@@ -198,35 +207,26 @@ for (prior in 1:3) {
     # lower support bound, including when the entire tree is one leaf.
     positive_lower <- survPT(rbind(c(1, 1), c(2, 2)), prior = prior,
                              prior_params = params, support = c(0.5, 2),
-                             max_M = 0, test_seq = c(0.5, 2, Inf), verbose = FALSE)
+                             max_M = 0, verbose = FALSE)
+    positive_lower <- evaluate_fit(positive_lower, c(0.5, 2, Inf))
     stopifnot(positive_lower$Density[1] == 0, positive_lower$Density[2] > 0,
               positive_lower$Density[3] == 0)
 }
 cat(sprintf("All %d endpoint cases and 3 positive-lower-bound cases passed.\n", boundary_cases))
 
-# Default grids must include finite censoring times, ignore extra columns,
-# and agree with predictions requested explicitly on the same grid.
+# Fitting is independent of evaluation times, including all-right-censored data.
 grid_cases <- list(
     all_right = cbind(L = c(1, 2, 7), R = Inf, ignored = 999),
     mixed = cbind(rbind(c(1, 1), c(2, 2), c(7, Inf)), ignored = 999),
     finite_right = cbind(rbind(c(1, 5), c(2, Inf)), ignored = 999)
 )
 for (prior in 1:3) for (allocated in 0:1) for (data in grid_cases) {
-    endpoints <- data[, 1:2]
-    expected_grid <- seq(0, max(endpoints[is.finite(endpoints)]), length.out = 200)
-    args <- list(X = data, prior = prior, prior_params = switch(prior, NULL, 1, c(1, 2)),
-                 allocated = allocated, max_M = 3, max_EM_iter = 5, verbose = FALSE)
-    automatic <- do.call(survPT, args)
-    explicit <- do.call(survPT, c(args, list(test_seq = expected_grid)))
-    assert_close(automatic$Test_seq, expected_grid, "default grid finite maximum")
-    assert_close(automatic$Survival_Probs, explicit$Survival_Probs, "default grid survival")
-    assert_close(automatic$Density, explicit$Density, "default grid density")
+    fit <- survPT(data, prior = prior, prior_params = switch(prior, NULL, 1, c(1, 2)),
+                  allocated = allocated, max_M = 3, max_EM_iter = 5, verbose = FALSE)
+    stopifnot(inherits(fit, "survPT"), ncol(fit$X) == 2L,
+              !any(c("Test_seq", "Survival_Probs", "Density") %in% names(fit)))
+    points <- c(10, 0, 0.25, 10)
+    predicted <- predict(fit, points, sample = FALSE)
+    stopifnot(identical(predicted$x, points), predicted$estimate[1] == predicted$estimate[4])
 }
-custom_grid <- c(0, 0.25, 10)
-custom <- survPT(grid_cases$all_right, test_seq = custom_grid, max_M = 2, verbose = FALSE)
-stopifnot(identical(custom$Test_seq, custom_grid))
-invalid_grid <- tryCatch(survPT(matrix(c(Inf, Inf), 1, 2), verbose = FALSE),
-                         error = identity)
-stopifnot(inherits(invalid_grid, "error"),
-          grepl("without finite observation endpoints", conditionMessage(invalid_grid), fixed = TRUE))
-cat("All 18 default-grid cases, custom-grid and missing-finite-endpoint checks passed.\n")
+cat("All 18 fit-only and explicit prediction cases passed.\n")

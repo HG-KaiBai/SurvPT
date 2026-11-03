@@ -16,7 +16,7 @@ The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) un
 | `survPT()` | Numeric left and right interval endpoints | Finite Polya tree with uniform, exponential, Weibull, or spliced uniform-exponential conditional base distributions; supports exact, interval-censored, right-censored, and current-status observations |
 | `estimate()`, `estimate_exp()` | Left and right endpoints | Parametric Weibull and exponential maximum-likelihood estimates, useful for choosing PT base parameters |
 
-Start with `survPT()` and encode each observation as a pair of interval endpoints. Choose a uniform, exponential, Weibull, or spliced uniform-exponential base distribution, fit the tree, and evaluate the survival function on a time grid. The estimator returns point estimates; it does not accept covariates or return posterior draws, confidence intervals, or a multivariate fitted distribution. Read the [method and tail definitions](docs/methods.md) before interpreting extrapolation.
+Start with `survPT()` and encode each observation as a pair of interval endpoints. It returns a fitted model without an evaluation grid. Use `predict(model, x, level = 0.95)` for the fitted survival estimate, pointwise credible intervals, and posterior means and medians from data-augmentation Gibbs sampling. Covariates and multivariate distributions are not supported. Read the [method and tail definitions](docs/methods.md) before interpreting extrapolation.
 
 ## Install from GitHub
 
@@ -46,15 +46,20 @@ x <- data.frame(
 grid <- seq(0, 6, length.out = 101)
 
 fit <- survPT(
-  x[, c("L", "R")], test_seq = grid,
+  x[, c("L", "R")],
   prior = 2, prior_params = 0.5,
   max_M = 6, max_EM_iter = 100, verbose = FALSE
 )
 
-plot(fit$Test_seq, as.numeric(fit$Survival_Probs), type = "l",
+set.seed(123)
+prediction <- predict(fit, grid, level = 0.95)
+head(prediction)  # x, estimate, lower, upper, mean, median
+plot(prediction$x, prediction$estimate, type = "l",
      xlab = "Time", ylab = "Survival probability", ylim = c(0, 1))
 sum(fit$Posterior_Probs[fit$Terminal_Nodes])  # approximately 1
 ```
+
+`estimate` uses the same fitted survival calculation as the former `Survival_Probs` output. `lower` and `upper` are equal-tailed posterior limits; `mean` and `median` summarize survival probability at each time. Defaults retain 5,000 draws after 3,000 burn-in sweeps (8,000 total sweeps with the default thinning). Set `sample = FALSE` for point estimates only, or `keep_samples = TRUE` to retain the draws in `attr(prediction, "samples")`. Use `flat = TRUE` in `survPT()` for unit Beta prior parameters; the default `FALSE` keeps `max(1, 0.5 * m^2)`.
 
 `prior_params = 0.5` is an exponential **rate**, not a mean. `survPT()` reads the first two columns of `X` as interval endpoints; it does not read a status column. Use `as.numeric()` when a returned Armadillo vector appears as a one-column matrix.
 
@@ -63,7 +68,7 @@ For a uniform base body up to the largest finite observation endpoint, followed 
 ```r
 rate <- estimate_exp(x$L, x$R)
 fit_spliced <- survPT(x, prior = 4, prior_params = rate,
-                      test_seq = grid, verbose = FALSE)
+                      verbose = FALSE)
 ```
 
 The base retains exponential survival `exp(-rate * M)` at the splice point `M`; its CDF is linear between zero and `M`. See [Methods](docs/methods.md#uniform-body-with-exponential-tail) for the full definition.
@@ -78,7 +83,7 @@ A runnable example covering all four PT bases is in [Examples/quickstart.R](Exam
 - [Known limitations and troubleshooting](docs/limitations.md)
 - [Citations and BibTeX](docs/citations.md)
 
-Installed help is available with `help(package = "SurvPT")`, `?survPT`, and `?SurvPT` (the low-level native interface).
+Installed help is available with `help(package = "SurvPT")`, `?survPT`, `?predict.survPT`, and `?SurvPT` (the low-level native interface).
 
 ## Cite SurvPT
 
