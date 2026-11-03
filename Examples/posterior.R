@@ -21,12 +21,13 @@ if (as.character(utils::packageVersion("spBayesSurv")) != "1.1.9") {
 library(SurvPT)
 
 # Same simulated data and PT settings as test_function.R.
-K <- 2
+K <- 1
 Lambda <- 0.12
 n <- 200L
-data_seed <- 12L
+data_seed <- 124
 level <- 0.95
-n_samples <- 5000L
+# Sampling controls below apply only to PT; spBayesSurv uses its own defaults.
+n_samples <- 2000L
 burn_in <- 3000L
 thin <- 1L
 max_M <- 8L
@@ -107,25 +108,25 @@ mpt_baseline_function <- function() {
   adapt_bayes_initializers(spBayesSurv::survregbayes2, baseline_survreg)
 }
 
-# Use the same retained-draw/burn-in settings for the main posterior chains.
-# spBayesSurv also runs its package-default parametric initialization chain.
-bayes_mcmc <- list(nburn = burn_in, nsave = n_samples, nskip = thin - 1L,
-                   ndisplay = n_samples)
+# Omit mcmc so both spBayesSurv models use their package defaults.
+# The package-default parametric initialization chain is also retained.
 fit_mpt_posterior <- function(data) {
   data$empt_zero <- 0
   baseline_fit <- mpt_baseline_function()
   fit <- baseline_fit(survival::Surv(L, R, type = "interval2") ~ empt_zero,
-                       data = data, mcmc = bayes_mcmc, scale.designX = FALSE)
+                       data = data, scale.designX = FALSE)
   stopifnot(all(fit$X.scaled == 0), all(is.finite(fit$beta.scaled)),
             all(fit$X.scaled %*% fit$beta.scaled == 0),
-            identical(fit$mcmc, bayes_mcmc), fit$maxL == 4)
+            identical(fit$mcmc, eval(formals(spBayesSurv::survregbayes2)$mcmc)),
+            fit$maxL == 4)
   fit
 }
 fit_tbp_posterior <- function(data) {
   baseline_fit <- adapt_bayes_initializers(spBayesSurv::survregbayes, bayes_survreg)
   fit <- baseline_fit(survival::Surv(L, R, type = "interval2") ~ 1,
-                       data = data, mcmc = bayes_mcmc)
-  stopifnot(identical(fit$mcmc, bayes_mcmc), fit$maxL == 15)
+                       data = data)
+  stopifnot(identical(fit$mcmc, eval(formals(spBayesSurv::survregbayes)$mcmc)),
+            fit$maxL == 15)
   fit
 }
 
@@ -202,8 +203,14 @@ stopifnot(all(is.finite(as.matrix(posterior_intervals[, c("center", "lower", "up
           all(posterior_intervals$upper <= 1 + 1e-10),
           all(posterior_intervals$width >= -1e-10))
 
-cat(sprintf("\nPointwise %.1f%% posterior intervals; %d retained draws, %d burn-in, thin=%d.\n",
-            100 * level, n_samples, burn_in, thin))
+cat(sprintf("\nPointwise %.1f%% posterior intervals.\n", 100 * level))
+sampling_settings <- data.frame(
+  method = method_order,
+  retained = c(rep(n_samples, length(pt_specs)), mpt_model$mcmc$nsave, tbp_model$mcmc$nsave),
+  burn_in = c(rep(burn_in, length(pt_specs)), mpt_model$mcmc$nburn, tbp_model$mcmc$nburn),
+  thin = c(rep(thin, length(pt_specs)), mpt_model$mcmc$nskip + 1, tbp_model$mcmc$nskip + 1))
+cat("Main posterior chain settings (excluding spBayesSurv's parametric initialization):\n")
+print(sampling_settings, row.names = FALSE)
 cat("Center: PT posterior mean; spBayesSurv package Shat. PT_MAP is the fitted mode-based estimate.\n")
 cat("Intervals condition on each model's settings; PT and spBayesSurv use different priors.\n")
 cat("Versions: SurvPT", as.character(utils::packageVersion("SurvPT")),

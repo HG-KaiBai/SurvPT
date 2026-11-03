@@ -116,6 +116,8 @@ mpt_baseline_function <- function() {
   adapt_bayes_initializers(spBayesSurv::survregbayes2, baseline_survreg)
 }
 
+# Both spBayesSurv fits omit mcmc to use package-default sampling settings.
+# In version 1.1.9: nburn = 3000, nsave = 2000, nskip = 0, ndisplay = 500.
 fit_mpt <- function(data) {
   data$empt_zero <- 0
   f <- mpt_baseline_function()
