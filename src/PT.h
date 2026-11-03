@@ -1,76 +1,62 @@
-#ifndef PT_H
-#define PT_H
-
-// [[Rcpp::depends(RcppArmadillo)]]
+#ifndef SURVPT_PT_H
+#define SURVPT_PT_H
 #include <RcppArmadillo.h>
-#include <utility>
 #include <vector>
 
-using namespace Rcpp;
-using namespace arma;
-using namespace std;
-
+// The final leaf has an unspecified tail shape, for every centering family.
 class PT {
-
 public:
-    mat X; // data matrix
-    vec test_seq; // test sequence
-    int prior; // prior type (1: Uniform, 2: Exponential, 3: Weibull)
-    vec support; // support domain
-    int max_M; // maximum ordinary depth, before the final tail split
-    int NODES_NUM; // total number of nodes in the tree
-    vec prior_params; // prior parameters (only for Exponential and Weibull)
-    int n; // total sample size
-    int allocated; // 0: not allocated (MW) method, 1: allocated (PT) method
-    double largest_obs; // largest observation in the data
-    int max_EM_iter; // maximum number of EM iterations
-    double EM_tol; // tolerance for EM convergence
-    bool verbose; // print log info if true
-
-    // constructor
-    PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
-
-    // functions
-    void init(); // initialize the first tree structure
-    void clear(); // clear all member variables
-    double choose_split(int level, double left, double right); // choose split points for each node
-    double init_alpha(int level, double left, double right); // update concentration parameters alpha
-    void init_allocations(int parent, int left_child, int right_child); // update number of observations allocated to each node
-    void re_allocation(); // update allocations by the previous PT distribution
-    void update_allocations(int parent, int left_child, int right_child); // update allocations for children nodes
-    double update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node); // individual allocation based on posterior
-    void update_tree_size(); // double the size of the tree when necessary
-    void EM_step(); // perform EM algorithm to update allocations and posterior probabilities
-    List output(); // output results
-
+    PT(const arma::mat& X, int prior, int max_depth, const arma::vec& parameters,
+       int allocated, int max_iter, double tolerance, bool verbose,
+       double gamma, double kappa, double s0, double min_count,
+       double epsilon, bool flat_init);
+    PT(const Rcpp::List& state, bool verbose);
+    void fit();
+    Rcpp::List sample(int sweeps, int burn_in, int thin);
+    Rcpp::List output() const;
+    Rcpp::List state(const Rcpp::List& tree_output) const;
+    Rcpp::List predict_at(const arma::vec& times, const arma::mat& leaf_draws);
 private:
-    void split_node(int parent, double split_point);
-    void allocate_observations(); // E-step under the current complete leaf mixture
-    void prepare_em_cache();
-    void update_observation_probabilities();
-    double cached_individual_allocation(arma::uword obs, int node) const;
-    bool allocation_cache_ready = false;
-    arma::uvec terminal_indices;
-    std::vector<std::pair<int, int>> child_nodes;
-    // Leaf indices remain in the original terminal_nodes order.
-    std::vector<std::vector<arma::uword>> node_terminal_indices;
-    mat observation_leaf_probabilities;
-    vec observation_probabilities;
-    double base_cumulative_hazard(double x) const;
-    double terminal_probability(double left, double right, double a, double b) const;
-    double terminal_density(double t, double a, double b) const;
-    int nodes_used; // current idx of the last used node
-    vec left_bound;
-    vec right_bound; // left and right bounds of each node
-    vec node_levels; // levels of each node in the tree
-    vec alpha; // concentration parameters for beta distributions
-    mat in_node_obs; // construction weights, then observation eligibility markers
-    vec n_obs_allocated; // number of observations allocated to each node
-    vec posterior_probs; // posterior probabilities of each node
-    vec terminal_nodes; // indices of terminal nodes
-    vec new_posterior_probs; // new posterior probabilities after update
-    vec parent_nodes; // indices of parent nodes
-    vec survival_probs; // survival probabilities at test_seq
+    struct Node {
+        double left, right, log_center, initial_count, alpha;
+        int depth, parent, left_child, right_child;
+    };
+    struct Stage {
+        int iterations = 0;
+        bool converged = false;
+        double difference = NA_REAL;
+        std::vector<double> objective;
+    };
+    arma::mat data;
+    arma::vec grid, parameters;
+    int prior, max_depth, allocated, max_iter;
+    double tolerance, gamma, kappa, s0, min_count, epsilon, tau, h_tau;
+    bool verbose, flat_init, cached = false, predictions_cached = false, coverage_prepared = false;
+    std::vector<Node> nodes;
+    std::vector<int> leaves, splits, exact_leaf;
+    arma::mat log_coverage, survival_kernel, density_kernel;
+    arma::vec mass, log_mass, counts, theta;
+    Stage flat_stage, map_stage;
+    double hazard(double t) const;
+    double log_body_probability(double a, double b) const;
+    double log_reference_probability(double a, double b) const;
+    double reference_count(double a, double b) const;
+    double split_point(const Node& node) const;
+    void add_children(int parent, double cut);
+    void build_tree();
+    void prepare_coverage();
+    void prepare_predictions();
+    double log_conditional_probability(double l, double r, double a, double b) const;
+    double log_weight(int obs, int leaf) const;
+    double weight(int obs, int leaf) const;
+    double conditional_density(double t, double a, double b) const;
+    void propagate();
+    void aggregate(arma::vec& values) const;
+    double allocate(arma::vec& values, bool draw_labels) const;
+    void update_splits(const arma::vec& values, bool flat);
+    double objective(double log_likelihood, bool flat) const;
+    Stage run_em(bool flat);
+    void predict(arma::vec& survival, arma::vec& density) const;
+    Rcpp::List stage_output(const Stage& stage) const;
 };
-
 #endif

@@ -9,3 +9,4 @@ src/*.dll
 *.tar.gz
 SurvPT_*.zip
 output/release-*/
+/tmp/

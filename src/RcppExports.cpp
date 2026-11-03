@@ -31,29 +31,61 @@ BEGIN_RCPP
 END_RCPP
 }
 // SurvPT
-List SurvPT(const arma::mat X, const arma::vec test_seq, const int prior, const arma::vec support, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose);
-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP test_seqSEXP, SEXP priorSEXP, SEXP supportSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP) {
+Rcpp::List SurvPT(const arma::mat X, const int prior, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double gamma, const double kappa, const double s0, const double min_count, const double split_epsilon, const bool flat_init);
+RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP priorSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP gammaSEXP, SEXP kappaSEXP, SEXP s0SEXP, SEXP min_countSEXP, SEXP split_epsilonSEXP, SEXP flat_initSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec >::type test_seq(test_seqSEXP);
     Rcpp::traits::input_parameter< const int >::type prior(priorSEXP);
-    Rcpp::traits::input_parameter< const arma::vec >::type support(supportSEXP);
     Rcpp::traits::input_parameter< const int >::type max_M(max_MSEXP);
     Rcpp::traits::input_parameter< const arma::vec >::type prior_params(prior_paramsSEXP);
     Rcpp::traits::input_parameter< const int >::type allocated(allocatedSEXP);
     Rcpp::traits::input_parameter< const int >::type max_EM_iter(max_EM_iterSEXP);
     Rcpp::traits::input_parameter< const double >::type EM_tol(EM_tolSEXP);
     Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose));
+    Rcpp::traits::input_parameter< const double >::type gamma(gammaSEXP);
+    Rcpp::traits::input_parameter< const double >::type kappa(kappaSEXP);
+    Rcpp::traits::input_parameter< const double >::type s0(s0SEXP);
+    Rcpp::traits::input_parameter< const double >::type min_count(min_countSEXP);
+    Rcpp::traits::input_parameter< const double >::type split_epsilon(split_epsilonSEXP);
+    Rcpp::traits::input_parameter< const bool >::type flat_init(flat_initSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPT(X, prior, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, gamma, kappa, s0, min_count, split_epsilon, flat_init));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SurvPTSample
+Rcpp::List SurvPTSample(const Rcpp::List state, const int n_sweeps, const int burn_in, const int thin, const bool verbose);
+RcppExport SEXP _SurvPT_SurvPTSample(SEXP stateSEXP, SEXP n_sweepsSEXP, SEXP burn_inSEXP, SEXP thinSEXP, SEXP verboseSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List >::type state(stateSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_sweeps(n_sweepsSEXP);
+    Rcpp::traits::input_parameter< const int >::type burn_in(burn_inSEXP);
+    Rcpp::traits::input_parameter< const int >::type thin(thinSEXP);
+    Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPTSample(state, n_sweeps, burn_in, thin, verbose));
+    return rcpp_result_gen;
+END_RCPP
+}
+// SurvPTPredict
+Rcpp::List SurvPTPredict(const Rcpp::List state, const arma::vec times, const arma::mat leaf_draws);
+RcppExport SEXP _SurvPT_SurvPTPredict(SEXP stateSEXP, SEXP timesSEXP, SEXP leaf_drawsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::traits::input_parameter< const Rcpp::List >::type state(stateSEXP);
+    Rcpp::traits::input_parameter< const arma::vec >::type times(timesSEXP);
+    Rcpp::traits::input_parameter< const arma::mat >::type leaf_draws(leaf_drawsSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPTPredict(state, times, leaf_draws));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SurvPT_OPT_right", (DL_FUNC) &_SurvPT_OPT_right, 9},
-    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 10},
+    {"_SurvPT_SurvPT", (DL_FUNC) &_SurvPT_SurvPT, 14},
+    {"_SurvPT_SurvPTSample", (DL_FUNC) &_SurvPT_SurvPTSample, 5},
+    {"_SurvPT_SurvPTPredict", (DL_FUNC) &_SurvPT_SurvPTPredict, 3},
     {NULL, NULL, 0}
 };
 

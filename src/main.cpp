@@ -1,33 +1,33 @@
 // [[Rcpp::depends(RcppArmadillo)]]
-#include <RcppArmadillo.h>
+// [[Rcpp::plugins(cpp17)]]
 #include "PT.h"
 
-using namespace Rcpp;
-using namespace arma;
-using namespace std;
+// [[Rcpp::export(rng = false)]]
+Rcpp::List SurvPT(const arma::mat X, const int prior, const int max_M, const arma::vec prior_params,
+                 const int allocated, const int max_EM_iter, const double EM_tol,
+                 const bool verbose, const double gamma = 0.5, const double kappa = 0.1,
+                 const double s0 = -1, const double min_count = 1,
+                 const double split_epsilon = 1e-6, const bool flat_init = true) {
+    PT tree(X,prior,max_M,prior_params,allocated,max_EM_iter,EM_tol,
+            verbose,gamma,kappa,s0,min_count,split_epsilon,flat_init);
+    tree.fit();
+    Rcpp::List result=tree.output();
+    result["model_state"]=tree.state(result);
+    return result;
+}
 
 // [[Rcpp::export]]
-List SurvPT(const arma::mat X, //Data (n by d matrix)
-            const arma::vec test_seq, //Test sequence (length m vector)
-            const int prior,
-            const arma::vec support, //Support domain (length 2 vector)
-            const int max_M, //Maximum level of tree
-            const arma::vec prior_params, //Prior parameters (only for Exponential and Weibull
-            const int allocated, //0: not allocated (MW) method, 1: allocated (PT) method
-            const int max_EM_iter, //Maximum number of EM iterations
-            const double EM_tol, //Tolerance for EM convergence
-            const bool verbose //Verbose output
-){
-    //Initialize the class object
-    PT my_tree(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose);
+Rcpp::List SurvPTSample(const Rcpp::List state,const int n_sweeps,
+                       const int burn_in,const int thin,const bool verbose) {
+    if (n_sweeps<=0 || burn_in<0 || burn_in>=n_sweeps || thin<1)
+        Rcpp::stop("Require n_sweeps > burn_in >= 0 and thin >= 1.");
+    PT tree(state,verbose);
+    return tree.sample(n_sweeps,burn_in,thin);
+}
 
-    if (allocated == 1){
-        my_tree.EM_step();
-    }
-
-    List out = my_tree.output();
-
-    my_tree.clear();
-
-    return out;
+// [[Rcpp::export(rng = false)]]
+Rcpp::List SurvPTPredict(const Rcpp::List state,const arma::vec times,
+                        const arma::mat leaf_draws) {
+    PT tree(state,false);
+    return tree.predict_at(times,leaf_draws);
 }

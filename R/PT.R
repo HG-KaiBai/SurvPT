@@ -1,156 +1,146 @@
-#' Fit a finite Polya tree to censored event times
+#' Fit a self-consistent Polya tree model
 #'
-#' Estimate a univariate survival function and density from exact, interval-
-#' censored, right-censored, or current-status observations. The partition is
-#' fixed after initialization; the default fit iteratively reallocates censored
-#' observations using conditional terminal-node base distributions.
+#' Fit the deterministic MAP-EM model independently of prediction times and
+#' posterior sampling. Use `predict(fit, times, 0.95)` to run sampling and obtain
+#' survival predictions and credible intervals at target times. Use
+#' \code{\link{samplePT}()} for standalone posterior sampling.
 #'
-#' @param X Numeric matrix or data frame whose first two columns contain the
-#'   left and right observation endpoints, in that order. Additional columns
-#'   are ignored. Use `L == R` for an exact event, `R = Inf` for right censoring,
-#'   and `L = 0` for an event observed before a positive inspection time.
-#'   A status column is not used. Missing values are not supported.
-#' @param prior Base distribution: `1` for uniform, `2` for exponential,
-#'   or `3` for Weibull.
-#' @param support Must be `c(0, Inf)` for every base distribution.
-#' @param max_M Nonnegative integer maximum ordinary tree depth; the root is level zero.
-#'   A node also stops splitting if its construction weight is below one.
-#'   The rightmost terminal interval is then split once at `largest_obs`, adding
-#'   children one level deeper even when `max_M = 0` or that node stopped early.
-#'   Large depths can require excessive memory; start with a modest value.
-#' @param prior_params `NULL` for uniform (ignored), one positive rate `lambda`
-#'   for exponential, or two positive values `c(lambda, k)` for Weibull.
-#'   The Weibull shape is `k` and scale is `1 / lambda`.
-#' @param allocated `1` (default) for fractional allocation with EM updates;
-#'   `0` for the separate overlap-count estimator without EM.
-#' @param max_EM_iter Nonnegative integer maximum number of EM updates.
-#'   Zero returns equal conditional branch probabilities and their initial
-#'   observation allocations when `allocated = 1`.
-#' @param EM_tol Nonnegative stopping tolerance for the Euclidean norm of the
-#'   change in terminal-node masses. No convergence flag is returned.
-#' @param verbose Logical; print iteration progress if `TRUE`.
-#' @param test_seq Numeric evaluation points, preferably a sorted finite grid.
-#'   If `NULL`, uses 200 points from `support[1]` to the largest finite endpoint
-#'   in the first two columns of `X`, including right-censoring times.
-#'   Supply a grid explicitly when comparing fits.
+#' @param X Numeric matrix or data frame with left and right endpoints in its
+#'   first two columns. Use `L == R` for exact events, `R = Inf` for right
+#'   censoring, and `L = 0` for left censoring. Extra columns are ignored.
+#' @param prior Body centering family: `1` uniform, `2` truncated exponential,
+#'   or `3` truncated Weibull. Weibull is an extension of the manuscript.
+#' @param max_M Maximum ordinary tree depth, from 0 to 30; root depth is zero.
+#'   The separate tail split can add one more level.
+#' @param prior_params Exponential rate, or Weibull `c(rate, shape)` with scale
+#'   `1/rate`. If omitted for exponential, estimate the censored-data MLE once.
+#'   Uniform ignores this argument; Weibull requires explicit parameters.
+#' @param allocated `1` for MAP-EM; `0` retains the historical overlap-count
+#'   estimator, with the new partition and priors, without EM or sampling.
+#' @param max_EM_iter Iteration cap for each of the flat-prior and working-prior
+#'   stages (default 2000). Zero returns the reference distribution and its
+#'   allocations, without fitting either stage.
+#' @param EM_tol Stopping tolerance for the Euclidean change in leaf masses.
+#' @param verbose Print fitting progress.
+#' @param gamma Nonnegative prior strength, default `0.5`. At child depth `m`
+#'   and reference left share `r`, the Beta parameters are
+#'   `max(1, 2*gamma*m^2*r)` and `max(1, 2*gamma*m^2*(1-r))`.
+#'   Zero gives the flat Beta(1,1) prior.
+#' @param kappa Positive boundary-extension calibration factor, default `0.1`.
+#'   Used only to choose `s0`; it imposes no finite tail cutoff.
+#' @param s0 Optional reference tail mass in `(0,1)`. Defaults to
+#'   `kappa*tau*p0(tau)/(1 + kappa*tau*p0(tau))`, where `p0` is the normalized
+#'   body density. For uniform centering this is `kappa/(1+kappa)`.
+#' @param min_count Minimum reference expected count for ordinary splitting,
+#'   default 1. Zero disables count-based pruning. The tail is always separated.
+#' @param split_epsilon MAP-only probability bound, default `1e-6`.
+#'   The Gibbs sampler uses unrestricted Beta draws.
+#' @param flat_init First fit the flat-prior model, then use it to initialize
+#'   the working-prior MAP-EM (default `TRUE`).
 #'
 #' @details
-#' Since version 0.2.0, EM allocation probabilities and the returned survival
-#' function and density use the same selected base distribution conditioned on
-#' each terminal interval. The exponential base survival is `exp(-lambda * t)`;
-#' the Weibull base survival is `exp(-(lambda * t)^k)`.
+#' The support is fixed at `[0, Inf]`. Ordinary cuts are medians of the centering
+#' distribution on the node's intersection with `[0,tau]`. The rightmost leaf is split at `tau`, producing
+#' a separate tail leaf. Initial expected counts under the reference measure
+#' `(1-s0)*P0 + s0*tail` determine pruning. The resulting tree stays fixed.
 #'
-#' Every tree starts at `[0, Inf]`. Ordinary splits bisect the selected base
-#' distribution restricted to the current node intersected with
-#' `[0, largest_obs]`, where `largest_obs` is the largest finite endpoint in the
-#' first two columns of `X` and must be positive. Uniform splits are midpoints.
-#' After ordinary splitting, the rightmost interval is split at `largest_obs`.
-#' At child depth `m`, both Beta prior parameters are `max(1, 0.5 * m^2)`,
-#' including these final tail children.
+#' Each EM E-step uses leaf masses times conditional body probabilities, or a
+#' tail factor of one for right censoring and zero otherwise. Each M-step uses
+#' the clipped Beta mode with fractional expected counts. The initial reference
+#' distribution is distinct from the actual Beta-prior mean when the lower
+#' bound of one on a Beta parameter is active. Both tail quantities are returned.
 #'
-#' The uniform tail is a point mass at infinity: it contributes no finite-time
-#' density, and survival beyond `largest_obs` stays at the fitted tail mass.
-#' Its continuous density therefore integrates to one minus that mass.
-#' Exponential and Weibull tails use their conditional base distributions.
-#' Survival is zero at `Inf` for all bases.
+#' The tail shape is never extrapolated. `Tail_Prob` is the MAP estimate of
+#' `S(tau)`. Unrestricted mean event time is not determined by this model.
+#' Exact events at a split belong to its left interval; zero is included in
+#' intervals starting at zero. `Posterior_Probs` remains the historical name
+#' for deterministic MAP node masses, not posterior mean masses.
 #'
-#' With `allocated = 1`, every branch starts with probabilities `1/2, 1/2`,
-#' including the final tail split. A depth-`d` leaf initially has mass `2^(-d)`.
-#' During construction, an observation's weight is divided according to the
-#' current probabilities of its compatible children; these provisional weights
-#' determine early stopping. Once the tree is complete, observations are
-#' allocated using leaf masses times conditional terminal-base probabilities,
-#' normalized over all compatible leaves. Each later E-step uses the preceding
-#' M-step's masses. A uniform tail has observation factor one for right censoring
-#' and zero for finite observations; it needs no unbounded uniform truncation.
-#' The first count-based branch update occurs in the first EM iteration.
-#' With `allocated = 0`, overlap-count initialization and its mode update are
-#' retained; uniform right-censored observations start entirely in the tail.
-#'
-#' Intervals represent `(L, R]`, including zero when `L = 0`, with exact events
-#' treated separately. Node allocation and density use `(a, b]`, or `[0, b]`
-#' when `a = 0`; exact events at positive split points belong to the left node.
-#' Input validation is incomplete: check numeric types, missing values,
-#' endpoint ordering, support compatibility, and integer iteration controls.
-#'
-#' Branch masses use a clipped, mode-style update with depth-dependent prior
-#' parameters, not posterior draws or the usual posterior-mean update.
-#' All conditional split probabilities are constrained to `[1e-6, 1 - 1e-6]`,
-#' including the final tail split and the `allocated = 0` estimator.
-#' The function does not estimate uncertainty intervals, covariate effects,
-#' multivariate distributions, or a sampling-truncation likelihood.
-#'
-#' @return A list with the following components. Armadillo vectors can appear
-#'   as one-column matrices; use `as.numeric()` if a plain vector is needed.
+#' @return A serializable S3 model of class `survPT`, containing `Left`, `Right`,
+#'   `Level`, `Allocations`, `Posterior_Probs`, and `Terminal_Nodes`.
+#'   Predictions and posterior summaries are returned separately by `predict()`.
+#'   Additional fields are:
 #'   \describe{
-#'     \item{Left, Right}{Node interval boundaries.}
-#'     \item{Level}{Node depths, with the root at zero.}
-#'     \item{Allocations}{Allocated observation counts, possibly fractional.}
-#'     \item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
-#'     \item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
-#'       masses at these indices to check total probability.}
-#'     \item{Test_seq}{The evaluation grid.}
-#'     \item{Survival_Probs}{Estimated survival probabilities at the grid.}
-#'     \item{Density}{Estimated density at the grid.}
+#'     \item{Alpha, Parent, Left_Child, Right_Child, Split_Nodes, Branch_Probs}{
+#'       Prior parameters, one-based tree links, and fitted conditional branch
+#'       probabilities. Root parents and absent children are `NA`.}
+#'     \item{Reference_Probs, Reference_Branch_Probs, Initial_Allocations}{
+#'       Reference masses, shares and expected counts used to build the tree.}
+#'     \item{Tau, Tail_Node, Tail_Prob}{Largest finite endpoint, tail index and
+#'       fitted tail probability.}
+#'     \item{Prior}{Centering parameters, gamma, kappa, reference `s0`, and
+#'       `tail_mean`, the actual induced Beta-prior mean after parameter flooring.}
+#'     \item{Convergence}{Flat and MAP stage iteration counts, convergence flags,
+#'       final changes, and log posterior kernels omitting constants independent
+#'       of the branch probabilities. A cap does not imply convergence.}
+#'     \item{Model}{Internal plain-R fitted state, including training intervals,
+#'       retained tree and fitted probabilities. It supports prediction and
+#'       sampling after `saveRDS()` and `readRDS()`; do not edit it manually.}
 #'   }
-#'   The wrapper does not return `Alpha`, posterior samples, or convergence
-#'   diagnostics.
-#' @seealso \code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
-#'   \code{\link{SurvPT}()} for the low-level interface.
+#' @seealso \code{\link{predict.survPT}()}, \code{\link{samplePT}()},
+#'   \code{\link{estimate_exp}()}, \code{\link{SurvPT}()}
 #' @export
-#'
 #' @examples
-#' x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
-#'                 R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
-#' fit <- survPT(x, prior = 2, prior_params = 0.5,
-#'               test_seq = seq(0, 6, length.out = 31),
-#'               max_M = 4, max_EM_iter = 30, verbose = FALSE)
+#' x <- data.frame(L=c(0.3,0.7,1.2,1.8,2.4,3),
+#'                 R=c(0.3,1.1,1.2,2.5,Inf,Inf))
+#' fit <- survPT(x, prior=2, prior_params=0.5, max_M=4, verbose=FALSE)
 #' sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-#' head(as.numeric(fit$Survival_Probs))
-survPT <- function(X, test_seq = NULL, prior = 1, support = c(0, Inf), max_M = 8, prior_params = NULL, allocated = 1, max_EM_iter = 100, EM_tol = 1e-6, verbose = TRUE) {
-    X = as.matrix(X)
-    # The first column and second column of X are the observed left bound and right bound, respectively.
-    if (!is.matrix(X) || ncol(X) < 2 || (any(X[,2] < X[,1]))) {
-        stop("Invalid input data X.")
+#' fit$Tail_Prob
+#' set.seed(42)
+#' predicted <- predict(fit, c(0,0.5,1,2,3), 0.95,
+#'                      n_sweeps=200, burn_in=50)
+#' predicted$Survival_Probs
+#' predicted$Posterior$Survival
+survPT <- function(X, prior = 1, max_M = 8, prior_params = NULL, allocated = 1,
+                   max_EM_iter = 2000, EM_tol = 1e-6, verbose = TRUE,
+                   gamma = 0.5, kappa = 0.1, s0 = NULL, min_count = 1,
+                   split_epsilon = 1e-6, flat_init = TRUE) {
+    if (length(dim(X)) != 2L || ncol(X) < 2L || nrow(X) == 0L)
+        stop('X must have rows and two endpoint columns.')
+    X <- as.matrix(X[, 1:2, drop = FALSE])
+    if (!is.numeric(X) || anyNA(X) || any(!is.finite(X[,1])) ||
+        any(X[,1] < 0) || any(X[,2] < X[,1])) stop('Require numeric 0 <= L <= R, finite L, and no missing endpoints.')
+    scalar <- pt_scalar
+    scalar(prior, 'prior', 1, 3, TRUE)
+    scalar(allocated, 'allocated', 0, 1, TRUE)
+    scalar(max_M, 'max_M', 0, 30, TRUE)
+    scalar(max_EM_iter,'max_EM_iter',0,.Machine$integer.max,TRUE)
+    for (nm in c('EM_tol','gamma','min_count')) scalar(get(nm),nm,0)
+    scalar(kappa,'kappa',.Machine$double.xmin)
+    scalar(split_epsilon,'split_epsilon',.Machine$double.xmin,0.5)
+    if (split_epsilon >= 0.5) stop('split_epsilon must be less than 0.5.')
+    if (!is.null(s0)) {
+        scalar(s0,'s0',0,1)
+        if (s0 <= 0 || s0 >= 1) stop('s0 must lie in (0,1).')
     }
-    if (! is.numeric(prior) || length(prior) != 1 || prior %in% c(1, 2, 3) == FALSE){
-        stop("Invalid input prior.")
-    }
-    if (prior == 2 && (length(prior_params) != 1 || any(prior_params <= 0))) {
-        stop("Please provide a single prior parameter for Exponential prior.")
-    }
-    if (prior == 3 && (length(prior_params) != 2 || any(prior_params <= 0))) {
-        stop("Please provide two positive prior parameters for Weibull prior.")
-    }
-    if (!is.numeric(support) || length(support) != 2 || anyNA(support) ||
-        support[1] != 0 || support[2] != Inf) {
-        stop("support must be c(0, Inf) for the observed-range tree.")
-    }
-
-    if (is.null(test_seq)){
-        endpoints = X[, 1:2, drop = FALSE]
-        finite_endpoints = endpoints[is.finite(endpoints)]
-        if (length(finite_endpoints) == 0) {
-            stop("Cannot construct a default prediction grid without finite observation endpoints.")
-        }
-        test_seq = seq(support[1], max(finite_endpoints), length.out = 200)
-    }
-
-    # Handle NULL prior_params for uniform prior
-    if (prior == 1 && is.null(prior_params)) {
-        prior_params = c(0.12, 1)  # Default values, not used for uniform prior
-    }
-
-    out = SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose)
-    out_PT = list("Left" = out$left_bound,
-                  "Right" = out$right_bound,
-                  "Level" = out$node_levels,
-                  "Allocations" = out$n_obs_allocated,
-                  "Posterior_Probs" = out$posterior_probs,
-                  "Terminal_Nodes" = out$terminal_nodes + 1,
-                  "Test_seq" = test_seq,
-                  "Survival_Probs" = out$survival_probs,
-                  "Density" = out$density_probs
-                  )
-    return(out_PT)
+    for (nm in c('verbose','flat_init'))
+        if (!is.logical(get(nm)) || length(get(nm)) != 1L || is.na(get(nm))) stop(nm,' must be TRUE or FALSE.')
+    tau <- max(X[is.finite(X)])
+    if (tau <= 0) stop('At least one positive finite endpoint is required.')
+    if (prior == 2 && is.null(prior_params)) prior_params <- estimate_exp(X[,1],X[,2])
+    if (prior == 1) prior_params <- numeric()
+    if (prior != 1 && (!is.numeric(prior_params) ||
+        length(prior_params) != (if (prior == 2) 1L else 2L) ||
+        any(!is.finite(prior_params)) || any(prior_params <= 0)))
+        stop('Supply a positive exponential rate, or Weibull c(rate, shape).')
+    out <- SurvPT(X,prior,max_M,prior_params,allocated,
+                  max_EM_iter,EM_tol,verbose,gamma,kappa,if (is.null(s0)) -1 else s0,
+                  min_count,split_epsilon,flat_init)
+    link <- function(index) ifelse(index < 0, NA_integer_, as.integer(index)+1L)
+    fit <- list(Left=out$left_bound, Right=out$right_bound, Level=out$node_levels,
+        Allocations=out$n_obs_allocated, Posterior_Probs=out$posterior_probs,
+        Terminal_Nodes=as.integer(out$terminal_nodes)+1L,
+        Alpha=out$alpha, Parent=link(out$parent_nodes), Left_Child=link(out$left_children),
+        Right_Child=link(out$right_children), Split_Nodes=as.integer(out$split_nodes)+1L,
+        Branch_Probs=out$branch_probs, Reference_Probs=out$reference_probs,
+        Reference_Branch_Probs=out$reference_branch_probs,
+        Initial_Allocations=out$initial_allocations, Tau=out$largest_obs,
+        Tail_Node=out$tail_node+1L, Tail_Prob=out$tail_prob,
+        Prior=list(family=c('uniform','exponential','weibull')[prior],
+                   parameters=prior_params,gamma=gamma,kappa=kappa,
+                   s0=out$tail_prior,tail_mean=out$prior_tail_mean),
+        Convergence=list(flat=out$flat_fit,map=out$map_fit),
+        Model=out$model_state)
+    class(fit) <- c('survPT','list')
+    fit
 }

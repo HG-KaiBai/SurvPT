@@ -2,139 +2,132 @@
 % Please edit documentation in R/PT.R
 \name{survPT}
 \alias{survPT}
-\title{Fit a finite Polya tree to censored event times}
+\title{Fit a self-consistent Polya tree model}
 \usage{
 survPT(
   X,
-  test_seq = NULL,
   prior = 1,
-  support = c(0, Inf),
   max_M = 8,
   prior_params = NULL,
   allocated = 1,
-  max_EM_iter = 100,
+  max_EM_iter = 2000,
   EM_tol = 1e-06,
-  verbose = TRUE
+  verbose = TRUE,
+  gamma = 0.5,
+  kappa = 0.1,
+  s0 = NULL,
+  min_count = 1,
+  split_epsilon = 1e-06,
+  flat_init = TRUE
 )
 }
 \arguments{
-\item{X}{Numeric matrix or data frame whose first two columns contain the
-left and right observation endpoints, in that order. Additional columns
-are ignored. Use \code{L == R} for an exact event, \code{R = Inf} for right censoring,
-and \code{L = 0} for an event observed before a positive inspection time.
-A status column is not used. Missing values are not supported.}
+\item{X}{Numeric matrix or data frame with left and right endpoints in its
+first two columns. Use \code{L == R} for exact events, \code{R = Inf} for right
+censoring, and \code{L = 0} for left censoring. Extra columns are ignored.}
 
-\item{test_seq}{Numeric evaluation points, preferably a sorted finite grid.
-If \code{NULL}, uses 200 points from \code{support[1]} to the largest finite endpoint
-in the first two columns of \code{X}, including right-censoring times.
-Supply a grid explicitly when comparing fits.}
+\item{prior}{Body centering family: \code{1} uniform, \code{2} truncated exponential,
+or \code{3} truncated Weibull. Weibull is an extension of the manuscript.}
 
-\item{prior}{Base distribution: \code{1} for uniform, \code{2} for exponential,
-or \code{3} for Weibull.}
+\item{max_M}{Maximum ordinary tree depth, from 0 to 30; root depth is zero.
+The separate tail split can add one more level.}
 
-\item{support}{Must be \code{c(0, Inf)} for every base distribution.}
+\item{prior_params}{Exponential rate, or Weibull \code{c(rate, shape)} with scale
+\code{1/rate}. If omitted for exponential, estimate the censored-data MLE once.
+Uniform ignores this argument; Weibull requires explicit parameters.}
 
-\item{max_M}{Nonnegative integer maximum ordinary tree depth; the root is level zero.
-A node also stops splitting if its construction weight is below one.
-The rightmost terminal interval is then split once at \code{largest_obs}, adding
-children one level deeper even when \code{max_M = 0} or that node stopped early.
-Large depths can require excessive memory; start with a modest value.}
+\item{allocated}{\code{1} for MAP-EM; \code{0} retains the historical overlap-count
+estimator, with the new partition and priors, without EM or sampling.}
 
-\item{prior_params}{\code{NULL} for uniform (ignored), one positive rate \code{lambda}
-for exponential, or two positive values \code{c(lambda, k)} for Weibull.
-The Weibull shape is \code{k} and scale is \code{1 / lambda}.}
+\item{max_EM_iter}{Iteration cap for each of the flat-prior and working-prior
+stages (default 2000). Zero returns the reference distribution and its
+allocations, without fitting either stage.}
 
-\item{allocated}{\code{1} (default) for fractional allocation with EM updates;
-\code{0} for the separate overlap-count estimator without EM.}
+\item{EM_tol}{Stopping tolerance for the Euclidean change in leaf masses.}
 
-\item{max_EM_iter}{Nonnegative integer maximum number of EM updates.
-Zero returns equal conditional branch probabilities and their initial
-observation allocations when \code{allocated = 1}.}
+\item{verbose}{Print fitting progress.}
 
-\item{EM_tol}{Nonnegative stopping tolerance for the Euclidean norm of the
-change in terminal-node masses. No convergence flag is returned.}
+\item{gamma}{Nonnegative prior strength, default \code{0.5}. At child depth \code{m}
+and reference left share \code{r}, the Beta parameters are
+\code{max(1, 2*gamma*m^2*r)} and \code{max(1, 2*gamma*m^2*(1-r))}.
+Zero gives the flat Beta(1,1) prior.}
 
-\item{verbose}{Logical; print iteration progress if \code{TRUE}.}
+\item{kappa}{Positive boundary-extension calibration factor, default \code{0.1}.
+Used only to choose \code{s0}; it imposes no finite tail cutoff.}
+
+\item{s0}{Optional reference tail mass in \verb{(0,1)}. Defaults to
+\code{kappa*tau*p0(tau)/(1 + kappa*tau*p0(tau))}, where \code{p0} is the normalized
+body density. For uniform centering this is \code{kappa/(1+kappa)}.}
+
+\item{min_count}{Minimum reference expected count for ordinary splitting,
+default 1. Zero disables count-based pruning. The tail is always separated.}
+
+\item{split_epsilon}{MAP-only probability bound, default \code{1e-6}.
+The Gibbs sampler uses unrestricted Beta draws.}
+
+\item{flat_init}{First fit the flat-prior model, then use it to initialize
+the working-prior MAP-EM (default \code{TRUE}).}
 }
 \value{
-A list with the following components. Armadillo vectors can appear
-as one-column matrices; use \code{as.numeric()} if a plain vector is needed.
+A serializable S3 model of class \code{survPT}, containing \code{Left}, \code{Right},
+\code{Level}, \code{Allocations}, \code{Posterior_Probs}, and \code{Terminal_Nodes}.
+Predictions and posterior summaries are returned separately by \code{predict()}.
+Additional fields are:
 \describe{
-\item{Left, Right}{Node interval boundaries.}
-\item{Level}{Node depths, with the root at zero.}
-\item{Allocations}{Allocated observation counts, possibly fractional.}
-\item{Posterior_Probs}{Estimated masses for internal and terminal nodes.}
-\item{Terminal_Nodes}{One-based R indices of the terminal nodes. Sum
-masses at these indices to check total probability.}
-\item{Test_seq}{The evaluation grid.}
-\item{Survival_Probs}{Estimated survival probabilities at the grid.}
-\item{Density}{Estimated density at the grid.}
+\item{Alpha, Parent, Left_Child, Right_Child, Split_Nodes, Branch_Probs}{
+Prior parameters, one-based tree links, and fitted conditional branch
+probabilities. Root parents and absent children are \code{NA}.}
+\item{Reference_Probs, Reference_Branch_Probs, Initial_Allocations}{
+Reference masses, shares and expected counts used to build the tree.}
+\item{Tau, Tail_Node, Tail_Prob}{Largest finite endpoint, tail index and
+fitted tail probability.}
+\item{Prior}{Centering parameters, gamma, kappa, reference \code{s0}, and
+\code{tail_mean}, the actual induced Beta-prior mean after parameter flooring.}
+\item{Convergence}{Flat and MAP stage iteration counts, convergence flags,
+final changes, and log posterior kernels omitting constants independent
+of the branch probabilities. A cap does not imply convergence.}
+\item{Model}{Internal plain-R fitted state, including training intervals,
+retained tree and fitted probabilities. It supports prediction and
+sampling after \code{saveRDS()} and \code{readRDS()}; do not edit it manually.}
 }
-The wrapper does not return \code{Alpha}, posterior samples, or convergence
-diagnostics.
 }
 \description{
-Estimate a univariate survival function and density from exact, interval-
-censored, right-censored, or current-status observations. The partition is
-fixed after initialization; the default fit iteratively reallocates censored
-observations using conditional terminal-node base distributions.
+Fit the deterministic MAP-EM model independently of prediction times and
+posterior sampling. Use \code{predict(fit, times, 0.95)} to run sampling and obtain
+survival predictions and credible intervals at target times. Use
+\code{\link{samplePT}()} for standalone posterior sampling.
 }
 \details{
-Since version 0.2.0, EM allocation probabilities and the returned survival
-function and density use the same selected base distribution conditioned on
-each terminal interval. The exponential base survival is \code{exp(-lambda * t)};
-the Weibull base survival is \code{exp(-(lambda * t)^k)}.
+The support is fixed at \verb{[0, Inf]}. Ordinary cuts are medians of the centering
+distribution on the node's intersection with \verb{[0,tau]}. The rightmost leaf is split at \code{tau}, producing
+a separate tail leaf. Initial expected counts under the reference measure
+\code{(1-s0)*P0 + s0*tail} determine pruning. The resulting tree stays fixed.
 
-Every tree starts at \verb{[0, Inf]}. Ordinary splits bisect the selected base
-distribution restricted to the current node intersected with
-\verb{[0, largest_obs]}, where \code{largest_obs} is the largest finite endpoint in the
-first two columns of \code{X} and must be positive. Uniform splits are midpoints.
-After ordinary splitting, the rightmost interval is split at \code{largest_obs}.
-At child depth \code{m}, both Beta prior parameters are \code{max(1, 0.5 * m^2)},
-including these final tail children.
+Each EM E-step uses leaf masses times conditional body probabilities, or a
+tail factor of one for right censoring and zero otherwise. Each M-step uses
+the clipped Beta mode with fractional expected counts. The initial reference
+distribution is distinct from the actual Beta-prior mean when the lower
+bound of one on a Beta parameter is active. Both tail quantities are returned.
 
-The uniform tail is a point mass at infinity: it contributes no finite-time
-density, and survival beyond \code{largest_obs} stays at the fitted tail mass.
-Its continuous density therefore integrates to one minus that mass.
-Exponential and Weibull tails use their conditional base distributions.
-Survival is zero at \code{Inf} for all bases.
-
-With \code{allocated = 1}, every branch starts with probabilities \code{1/2, 1/2},
-including the final tail split. A depth-\code{d} leaf initially has mass \code{2^(-d)}.
-During construction, an observation's weight is divided according to the
-current probabilities of its compatible children; these provisional weights
-determine early stopping. Once the tree is complete, observations are
-allocated using leaf masses times conditional terminal-base probabilities,
-normalized over all compatible leaves. Each later E-step uses the preceding
-M-step's masses. A uniform tail has observation factor one for right censoring
-and zero for finite observations; it needs no unbounded uniform truncation.
-The first count-based branch update occurs in the first EM iteration.
-With \code{allocated = 0}, overlap-count initialization and its mode update are
-retained; uniform right-censored observations start entirely in the tail.
-
-Intervals represent \verb{(L, R]}, including zero when \code{L = 0}, with exact events
-treated separately. Node allocation and density use \verb{(a, b]}, or \verb{[0, b]}
-when \code{a = 0}; exact events at positive split points belong to the left node.
-Input validation is incomplete: check numeric types, missing values,
-endpoint ordering, support compatibility, and integer iteration controls.
-
-Branch masses use a clipped, mode-style update with depth-dependent prior
-parameters, not posterior draws or the usual posterior-mean update.
-All conditional split probabilities are constrained to \code{[1e-6, 1 - 1e-6]},
-including the final tail split and the \code{allocated = 0} estimator.
-The function does not estimate uncertainty intervals, covariate effects,
-multivariate distributions, or a sampling-truncation likelihood.
+The tail shape is never extrapolated. \code{Tail_Prob} is the MAP estimate of
+\code{S(tau)}. Unrestricted mean event time is not determined by this model.
+Exact events at a split belong to its left interval; zero is included in
+intervals starting at zero. \code{Posterior_Probs} remains the historical name
+for deterministic MAP node masses, not posterior mean masses.
 }
 \examples{
-x <- data.frame(L = c(0.3, 0.7, 1.2, 1.8, 2.4, 3),
-                R = c(0.3, 1.1, 1.2, 2.5, Inf, Inf))
-fit <- survPT(x, prior = 2, prior_params = 0.5,
-              test_seq = seq(0, 6, length.out = 31),
-              max_M = 4, max_EM_iter = 30, verbose = FALSE)
+x <- data.frame(L=c(0.3,0.7,1.2,1.8,2.4,3),
+                R=c(0.3,1.1,1.2,2.5,Inf,Inf))
+fit <- survPT(x, prior=2, prior_params=0.5, max_M=4, verbose=FALSE)
 sum(fit$Posterior_Probs[fit$Terminal_Nodes])
-head(as.numeric(fit$Survival_Probs))
+fit$Tail_Prob
+set.seed(42)
+predicted <- predict(fit, c(0,0.5,1,2,3), 0.95,
+                     n_sweeps=200, burn_in=50)
+predicted$Survival_Probs
+predicted$Posterior$Survival
 }
 \seealso{
-\code{\link{estimate}()}, \code{\link{estimate_exp}()}, \code{\link{data_rc}()},
-\code{\link{SurvPT}()} for the low-level interface.
+\code{\link{predict.survPT}()}, \code{\link{samplePT}()},
+\code{\link{estimate_exp}()}, \code{\link{SurvPT}()}
 }

@@ -1,684 +1,512 @@
 // [[Rcpp::depends(RcppArmadillo)]]
-#include <RcppArmadillo.h>
-#include <chrono>
 #include "PT.h"
-
-using namespace Rcpp;
-using namespace arma;
-using namespace std;
-
-#define SMALL_VALUE 1e-300
-#define LARGE_VALUE 1e+300
+#include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace {
-constexpr double SPLIT_PROB_EPSILON = 1e-6;
+const double INF = std::numeric_limits<double>::infinity();
+double log_add(double a, double b) {
+    if (a == -INF) return b;
+    if (b == -INF) return a;
+    const double hi = std::max(a, b);
+    return hi + std::log1p(std::exp(std::min(a, b) - hi));
+}
+bool contains(double t, double a, double b) {
+    return (t > a || (t == 0 && a == 0)) && t <= b;
+}
 }
 
-
-// constructor
-PT::PT(const mat X, const vec test_seq, const int prior, const vec support, const int max_M, const vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose) :
-    X(X), test_seq(test_seq), prior(prior), support(support), max_M(max_M), prior_params(prior_params), allocated(allocated), max_EM_iter(max_EM_iter), EM_tol(EM_tol), verbose(verbose) {
-
-    n = X.n_rows;
-    if (X.n_cols < 2 || n == 0) {
-        Rcpp::stop("X must contain observations with two endpoint columns.");
+PT::PT(const arma::mat& X, int prior, int max_depth, const arma::vec& parameters,
+       int allocated, int max_iter, double tolerance, bool verbose,
+       double gamma, double kappa, double s0, double min_count,
+       double epsilon, bool flat_init) :
+    data(X), parameters(parameters), prior(prior),
+    max_depth(max_depth), allocated(allocated), max_iter(max_iter),
+    tolerance(tolerance), gamma(gamma), kappa(kappa), s0(s0),
+    min_count(min_count), epsilon(epsilon), tau(0), h_tau(0),
+    verbose(verbose), flat_init(flat_init) {
+    if (data.n_rows == 0 || data.n_cols < 2)
+        Rcpp::stop("X must have observations and at least two endpoint columns.");
+    if (prior < 1 || prior > 3 || allocated < 0 || allocated > 1)
+        Rcpp::stop("Invalid prior or allocation mode.");
+    if (max_depth < 0 || max_depth > 30 || max_iter < 0 ||
+        !std::isfinite(tolerance) || tolerance < 0)
+        Rcpp::stop("Invalid depth, iteration cap, or EM tolerance.");
+    if (!std::isfinite(gamma) || gamma < 0 || !std::isfinite(kappa) || kappa <= 0 ||
+        !std::isfinite(min_count) || min_count < 0 ||
+        !std::isfinite(epsilon) || epsilon <= 0 || epsilon >= 0.5)
+        Rcpp::stop("Invalid gamma, kappa, min_count, or split_epsilon.");
+    if ((prior == 2 && parameters.n_elem != 1) || (prior == 3 && parameters.n_elem != 2))
+        Rcpp::stop("Exponential needs a rate; Weibull needs c(rate, shape).");
+    if (prior != 1 && (!parameters.is_finite() || arma::any(parameters <= 0)))
+        Rcpp::stop("Base parameters must be finite and positive.");
+    for (arma::uword i = 0; i < data.n_rows; ++i) {
+        double l = data(i, 0), r = data(i, 1);
+        if (!std::isfinite(l) || l < 0 || std::isnan(r) || r < l)
+            Rcpp::stop("Endpoints must satisfy 0 <= L <= R, with finite L and no missing values.");
+        tau = std::max(tau, l);
+        if (std::isfinite(r)) tau = std::max(tau, r);
     }
-    if (support.n_elem != 2 || support(0) != 0.0 || support(1) != arma::datum::inf) {
-        Rcpp::stop("support must be c(0, Inf) for the observed-range tree.");
+    if (tau <= 0) Rcpp::stop("At least one positive finite endpoint is required.");
+    if (prior != 1) {
+        h_tau = hazard(tau);
+        if (!std::isfinite(h_tau) || h_tau <= 0)
+            Rcpp::stop("The base cumulative hazard at the largest endpoint is not numerically representable.");
     }
-    if (max_M < 0) Rcpp::stop("max_M must be nonnegative.");
-    if (max_M <= 10){
-        NODES_NUM = (1 << (max_M + 1)) - 1; // number of nodes for complete tree
-    } else {
-        NODES_NUM = (1 << (8 + 1)) - 1; // number of nodes first 8 complete levels
+    if (s0 == -1) {
+        // Equation (4); Weibull extends the manuscript's uniform/exponential choices.
+        double log_extra = std::log(kappa);
+        if (prior != 1) {
+            const double shape = prior == 3 ? parameters(1) : 1.0;
+            log_extra += std::log(shape) + std::log(h_tau) - h_tau - std::log(-std::expm1(-h_tau));
+        }
+        this->s0 = log_extra >= 0 ? 1.0 / (1.0 + std::exp(-log_extra)) :
+            std::exp(log_extra) / (1.0 + std::exp(log_extra));
     }
-    nodes_used = 0;
+    if (!std::isfinite(this->s0) || this->s0 <= 0 || this->s0 >= 1)
+        Rcpp::stop("s0 must be strictly between zero and one; if automatic calibration underflows, supply s0 explicitly.");
+    build_tree();
+    prepare_coverage();
+    mass.set_size(nodes.size()); log_mass.set_size(nodes.size());
+    counts.zeros(nodes.size()); theta.zeros(nodes.size());
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        log_mass(i) = nodes[i].log_center; mass(i) = std::exp(log_mass(i));
+    }
+    for (int parent : splits)
+        theta(parent) = std::exp(nodes[nodes[parent].left_child].log_center - nodes[parent].log_center);
+    allocate(counts, false);
+}
 
-    largest_obs = -LARGE_VALUE;
-    for (uword i = 0; i < X.n_rows; ++i) {
-        for (uword j = 0; j < 2; ++j) {
-            const double v = X(i, j);
-            if (arma::is_finite(v) && v > largest_obs) {
-                largest_obs = v;
-            }
+double PT::hazard(double t) const {
+    return prior == 2 ? parameters(0) * t : std::pow(parameters(0) * t, parameters(1));
+}
+double PT::log_body_probability(double a, double b) const {
+    a = std::max(0.0, a); b = std::min(tau, b);
+    if (b <= a) return -INF;
+    if (prior == 1) return std::log(b-a) - std::log(tau);
+    const double ha = hazard(a), width = hazard(b) - ha;
+    if (width <= 0) return -INF;
+    return -ha + std::log(-std::expm1(-width)) - std::log(-std::expm1(-h_tau));
+}
+double PT::log_reference_probability(double a, double b) const {
+    const double body = std::log1p(-s0) + log_body_probability(a, b);
+    return b == INF ? log_add(body, std::log(s0)) : body;
+}
+double PT::reference_count(double a, double b) const {
+    double total = 0;
+    for (arma::uword i = 0; i < data.n_rows; ++i) {
+        const double l = data(i,0), r = data(i,1);
+        if (l == r) { total += contains(l,a,b); continue; }
+        const double lo = std::max(l,a), hi = std::min(r,b);
+        if (hi <= lo) continue;
+        total += std::exp(log_reference_probability(lo,hi) - log_reference_probability(l,r));
+    }
+    return total;
+}
+double PT::split_point(const Node& node) const {
+    if (node.depth >= max_depth || node.initial_count < min_count) return -1;
+    const double a = node.left, b = std::min(tau,node.right);
+    if (b <= a) return -1;
+    double cut;
+    if (prior == 1) cut = a + (b-a)/2;
+    else {
+        const double ha = hazard(a), width = hazard(b)-ha;
+        const double increment = -std::log1p(0.5*std::expm1(-width));
+        cut = prior == 2 ? a + increment/parameters(0) :
+            std::pow(ha+increment, 1/parameters(1))/parameters(0);
+    }
+    return std::isfinite(cut) && cut > a && cut < b ? cut : -1;
+}
+void PT::add_children(int parent, double cut) {
+    if (nodes.size() >= 2000000) Rcpp::stop("Tree too large; reduce max_M or increase min_count.");
+    const Node p = nodes[parent];
+    const int left = nodes.size(), right = left+1, depth = p.depth+1;
+    const double log_left = log_reference_probability(p.left, cut);
+    const double log_right = log_reference_probability(cut, p.right);
+    const double scale = 2*gamma*depth*depth;
+    nodes.push_back({p.left, cut, log_left, reference_count(p.left,cut),
+        std::max(1.0,scale*std::exp(log_left-p.log_center)), depth,parent,-1,-1});
+    nodes.push_back({cut,p.right,log_right,reference_count(cut,p.right),
+        std::max(1.0,scale*std::exp(log_right-p.log_center)),depth,parent,-1,-1});
+    nodes[parent].left_child = left; nodes[parent].right_child = right;
+}
+void PT::build_tree() {
+    nodes.push_back({0,INF,0,static_cast<double>(data.n_rows),1,0,-1,-1,-1});
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (i % 1024 == 0) Rcpp::checkUserInterrupt();
+        const double cut = split_point(nodes[i]);
+        if (cut > 0) add_children(i,cut);
+    }
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].left_child < 0 && nodes[i].right == INF) {
+            add_children(i,tau); break;
         }
     }
-    if (largest_obs <= 0.0) {
-        Rcpp::stop("The tree requires a positive finite observation endpoint.");
-    }
-
-    // initialize other member variables
-    left_bound = vec(NODES_NUM, fill::zeros);
-    left_bound(0) = support(0);
-
-    right_bound = vec(NODES_NUM, fill::zeros);
-    right_bound(0) = support(1);
-
-    node_levels = vec(NODES_NUM, fill::zeros);
-    node_levels(0) = 0;
-
-    alpha = vec(NODES_NUM, fill::zeros);
-    alpha(0) = 1.0;
-
-    parent_nodes = vec(NODES_NUM, fill::zeros);
-    for (int i = 0; i < NODES_NUM; i++) {
-        parent_nodes(i) = -1; // root has no parent
-    }
-
-    in_node_obs = mat(NODES_NUM, n, fill::zeros);
-    for (int i = 0; i < n; i++) {
-        in_node_obs(0, i) = 1.0; // all observations start at the root
-    }
-
-    n_obs_allocated = vec(NODES_NUM, fill::zeros);
-    n_obs_allocated(0) = n; // all observations start at the root
-
-    posterior_probs = vec(NODES_NUM, fill::zeros);
-    posterior_probs(0) = 1.0; // root node starts with probability 1
-
-    new_posterior_probs = vec(NODES_NUM, fill::zeros);
-    new_posterior_probs(0) = 1.0; // root node starts with probability 1
-
-    init();
-    if (allocated == 1) {
-        // Once all terminal intervals exist, condition observations on the
-        // equal-branch tree. Initialization performs an E-step, not an M-step.
-        prepare_em_cache();
-        allocate_observations();
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (nodes[i].left_child < 0) leaves.push_back(i); else splits.push_back(i);
     }
 }
-
-void PT::init() {
-    for (int i = 0; i <= nodes_used; i++) {
-        int level = node_levels(i);
-
-        double split_point = choose_split(level, left_bound(i), right_bound(i));
-        if (split_point < 0 || n_obs_allocated(i) < 1) {
-            terminal_nodes.insert_rows(terminal_nodes.n_rows, vec({(double)i}));
-            continue; // no split
+double PT::log_conditional_probability(double l, double r, double a, double b) const {
+    if (b == INF) return r == INF ? 0.0 : -INF;
+    const double lo = std::max(l,a), hi = std::min(r,b);
+    if (hi <= lo) return -INF;
+    if (prior == 1) return std::log(hi-lo)-std::log(b-a);
+    const double ha = hazard(a), hlo = hazard(lo);
+    const double width = hazard(b)-ha, overlap = hazard(hi)-hlo;
+    if (width <= 0 || overlap <= 0) return -INF;
+    return std::min(0.0, ha-hlo + std::log(-std::expm1(-overlap)) - std::log(-std::expm1(-width)));
+}
+double PT::log_weight(int obs, int leaf) const {
+    if (exact_leaf[obs] >= 0) return exact_leaf[obs] == leaf ? 0.0 : -INF;
+    const Node& node = nodes[leaves[leaf]];
+    return log_conditional_probability(data(obs,0),data(obs,1),node.left,node.right);
+}
+double PT::weight(int obs, int leaf) const {
+    return cached ? log_coverage(leaf,obs) : log_weight(obs,leaf);
+}
+void PT::prepare_coverage() {
+    exact_leaf.assign(data.n_rows,-1);
+    for (arma::uword i=0; i<data.n_rows; ++i) {
+        if (data(i,0) != data(i,1)) continue;
+        for (size_t j=0; j<leaves.size(); ++j) {
+            const Node& node = nodes[leaves[j]];
+            if (contains(data(i,0),node.left,node.right)) { exact_leaf[i]=j; break; }
         }
-        split_node(i, split_point);
+        if (exact_leaf[i] < 0) Rcpp::stop("An exact observation is outside the retained tree.");
     }
-
-    // Always split the final interval, including when it stopped early for
-    // low counts or max_M is zero. Its children form one additional layer.
-    for (uword t = 0; t < terminal_nodes.n_elem; ++t) {
-        const int node = static_cast<int>(terminal_nodes(t));
-        if (!arma::is_finite(right_bound(node))) {
-            terminal_nodes.shed_row(t);
-            split_node(node, largest_obs);
-            terminal_nodes.insert_rows(terminal_nodes.n_rows,
-                                       vec({double(nodes_used - 1), double(nodes_used)}));
-            break;
+    cached = leaves.size() <= (64u*1024u*1024u/sizeof(double))/data.n_rows;
+    if (cached) {
+        log_coverage.set_size(leaves.size(),data.n_rows);
+        for (arma::uword i=0; i<data.n_rows; ++i)
+            for (size_t j=0; j<leaves.size(); ++j) log_coverage(j,i)=log_weight(i,j);
+    }
+    coverage_prepared = true;
+}
+void PT::aggregate(arma::vec& values) const {
+    for (int i=static_cast<int>(nodes.size())-1; i>0; --i) values(nodes[i].parent) += values(i);
+}
+double PT::allocate(arma::vec& values, bool draw_labels) const {
+    values.zeros(nodes.size());
+    std::vector<double> probabilities(leaves.size());
+    double likelihood = 0;
+    for (arma::uword i=0; i<data.n_rows; ++i) {
+        if (i % 1024 == 0) Rcpp::checkUserInterrupt();
+        if (exact_leaf[i] >= 0) {
+            const int node=leaves[exact_leaf[i]];
+            values(node) += 1; likelihood += log_mass(node); continue;
         }
-    }
-}
-
-void PT::split_node(int i, double split_point) {
-    const int level = node_levels(i);
-    int left_child = ++nodes_used;
-    int right_child = ++nodes_used;
-    if (left_child >= NODES_NUM || right_child >= NODES_NUM) {
-        update_tree_size();
-    }
-    left_bound(left_child) = left_bound(i);
-    right_bound(left_child) = split_point;
-
-    left_bound(right_child) = split_point;
-    right_bound(right_child) = right_bound(i);
-
-    node_levels(left_child) = level + 1;
-    node_levels(right_child) = level + 1;
-
-    parent_nodes(left_child) = i;
-    parent_nodes(right_child) = i;
-
-    // The final tail split uses the same depth rule as ordinary splits.
-    alpha(left_child) = init_alpha(level + 1, left_bound(left_child), right_bound(left_child));
-    alpha(right_child) = init_alpha(level + 1, left_bound(right_child), right_bound(right_child));
-
-    // Fractional allocation starts with equal conditional branch masses,
-    // including the extra split at largest_obs. Construction counts only
-    // decide early stopping; terminal base distributions enter after init().
-    posterior_probs(left_child) = 0.5 * posterior_probs(i);
-    posterior_probs(right_child) = 0.5 * posterior_probs(i);
-    init_allocations(i, left_child, right_child);
-    if (allocated == 1) return;
-
-    double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
-    double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
-    if (total > SMALL_VALUE) {
-        double left_prob = min(max(left_count / total, SPLIT_PROB_EPSILON), 1.0 - SPLIT_PROB_EPSILON);
-        posterior_probs(left_child) = left_prob * posterior_probs(i);
-        posterior_probs(right_child) = (1.0 - left_prob) * posterior_probs(i);
-    } else {
-        posterior_probs(left_child) = 0.5 * posterior_probs(i);
-        posterior_probs(right_child) = 0.5 * posterior_probs(i);
-    }
-}
-
-double PT::choose_split(int level, double left, double right) {
-    if (level >= max_M) {
-        return -1.0; // no split at the last level
-    }
-    // The node itself can extend to infinity; only its splitting distribution
-    // is truncated to the observed range.
-    right = min(right, largest_obs);
-    if (right <= left) return -1.0;
-    double split = -1.0;
-    if (prior == 1) { // Uniform
-        split = left + (right - left) / 2.0;
-    } else if (prior == 2 || prior == 3) {
-        const double lambda = prior_params(0);
-        const double h_left = base_cumulative_hazard(left);
-        const double h_width = base_cumulative_hazard(right) - h_left;
-        // -log((1 + exp(-h_width))/2), stable even for tiny interval mass.
-        const double h_increment = -log1p(0.5 * expm1(-h_width));
-        split = prior == 2 ? left + h_increment / lambda :
-            pow(h_left + h_increment, 1.0 / prior_params(1)) / lambda;
-    } else {
-        Rcpp::stop("Invalid prior type.");
-    }
-    // Stop if floating-point precision cannot represent an interior median.
-    return arma::is_finite(split) && split > left && split < right ? split : -1.0;
-}
-
-double PT::init_alpha(int level, double left, double right) {
-    if (level <= 0) {
-        Rcpp::stop("Level must be positive.");
-    }
-    return max(1.0, 0.5 * pow(level, 2.0)); // level is the child depth
-    // Uncomment below for prior-dependent alpha initialization
-    // if (prior == 1) { // Uniform
-    //     return pow(level, 2.0) * 0.5;
-    // } else if (prior == 2) { // Exponential
-    //     const double lambda = prior_params(0);
-    //     if (arma::is_finite(right)) {
-    //         return pow(level, 2.0) * (exp(-lambda * left) - exp(-lambda * right));
-    //     } else {
-    //         return pow(level, 2.0) * exp(-lambda * left);
-    //     }
-    // } else if (prior == 3) { // Weibull
-    //     const double lambda = prior_params(0);
-    //     const double k = prior_params(1);
-    //     if (arma::is_finite(right)) {
-    //         return pow(level, 2.0) * (exp(-pow(lambda * left, k)) - exp(-pow(lambda * right, k)));
-    //     } else {
-    //         return pow(level, 2.0) * exp(-pow(lambda * left, k));
-    //     }
-    // } else {
-    //     Rcpp::stop("Invalid prior type.");
-    // }
-    // return 0.0; // unreachable, quiets some compilers
-}
-
-void PT::init_allocations(int parent, int left_child, int right_child) {
-    // While growing the tree, propagate each observation's current weight
-    // through compatible branches. No base CDF or density is evaluated here.
-    // The complete-tree E-step later replaces these construction weights.
-    arma::uvec parent_idx = arma::find(in_node_obs.row(parent) > 0.0);
-
-    for (arma::uword k = 0; k < parent_idx.n_elem; ++k) {
-        const arma::uword obs = parent_idx(k);
-        const double left_obs = X(obs, 0);
-        const double right_obs = X(obs, 1);
-
-        if (allocated == 1) {
-            const bool exact = left_obs == right_obs;
-            const bool hit_left = exact ?
-                ((left_obs > left_bound(left_child) ||
-                  (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
-                 left_obs <= right_bound(left_child)) :
-                max(left_obs, left_bound(left_child)) < min(right_obs, right_bound(left_child));
-            const bool hit_right = exact ?
-                ((left_obs > left_bound(right_child) ||
-                  (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
-                 left_obs <= right_bound(right_child)) :
-                max(left_obs, left_bound(right_child)) < min(right_obs, right_bound(right_child));
-            const double parent_weight = in_node_obs(parent, obs);
-            const double compatible_mass =
-                (hit_left ? posterior_probs(left_child) : 0.0) +
-                (hit_right ? posterior_probs(right_child) : 0.0);
-            if (compatible_mass > 0.0) {
-                if (hit_left) {
-                    const double weight = parent_weight * posterior_probs(left_child) / compatible_mass;
-                    in_node_obs(left_child, obs) = weight;
-                    n_obs_allocated(left_child) += weight;
-                }
-                if (hit_right) {
-                    const double weight = parent_weight * posterior_probs(right_child) / compatible_mass;
-                    in_node_obs(right_child, obs) = weight;
-                    n_obs_allocated(right_child) += weight;
-                }
+        double largest = -INF;
+        for (size_t j=0; j<leaves.size(); ++j) {
+            probabilities[j] = log_mass(leaves[j]) + weight(i,j);
+            largest = std::max(largest,probabilities[j]);
+        }
+        if (!std::isfinite(largest)) Rcpp::stop("An observation has zero probability under the current tree.");
+        double total=0;
+        for (double& p : probabilities) { p=std::exp(p-largest); total+=p; }
+        likelihood += largest+std::log(total);
+        if (draw_labels) {
+            const double u=R::runif(0,total);
+            double cumulative=0; int chosen=-1;
+            for (size_t j=0; j<leaves.size(); ++j) {
+                if (probabilities[j] <= 0) continue;
+                chosen=j; cumulative+=probabilities[j];
+                if (u < cumulative) break;
             }
-        } else if (allocated == 0) {
-            // hard allocation for MW method
-            if (prior == 1 && right_obs == arma::datum::inf) {
-                // Uniform right-censored observations start entirely in the
-                // tail, including when EM is disabled.
-                if (right_bound(right_child) == arma::datum::inf) {
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += 1.0;
-                }
-            } else if (left_obs == right_obs) {
-                if ((left_obs > left_bound(left_child) ||
-                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
-                    right_obs <= right_bound(left_child)) {
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += 1.0;
-                }
-                if ((left_obs > left_bound(right_child) ||
-                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
-                    right_obs <= right_bound(right_child)) {
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += 1.0;
-                }
-            } else {
-                if (left_obs < right_bound(left_child) && right_obs > left_bound(left_child)) {
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += 1.0;
-                }
-                if (left_obs < right_bound(right_child) && right_obs > left_bound(right_child)) {
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += 1.0;
-                }
-            }
+            if (chosen < 0) Rcpp::stop("No compatible leaf for a sampled label.");
+            values(leaves[chosen]) += 1;
         } else {
-            Rcpp::stop("Invalid allocation type.");
+            for (size_t j=0; j<leaves.size(); ++j) values(leaves[j])+=probabilities[j]/total;
         }
     }
-    if (allocated == 1){
-    // check for sum of allocations
-        if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
-            std::cout << "Parent node: " << n_obs_allocated(parent) << ", Left child: " << n_obs_allocated(left_child) << ", Right child: " << n_obs_allocated(right_child) << std::endl;
-            std::cout << "Sum of allocations exceeds parent sample size." << std::endl;
+    aggregate(values);
+    return likelihood; // Omits exact-density factors constant in the splits.
+}
+void PT::propagate() {
+    mass(0)=1; log_mass(0)=0;
+    for (int parent : splits) {
+        const double q=theta(parent);
+        const int left=nodes[parent].left_child, right=nodes[parent].right_child;
+        log_mass(left)=log_mass(parent)+std::log(q);
+        log_mass(right)=log_mass(parent)+std::log1p(-q);
+        mass(left)=std::exp(log_mass(left)); mass(right)=std::exp(log_mass(right));
+    }
+}
+void PT::update_splits(const arma::vec& values, bool flat) {
+    for (int parent : splits) {
+        const int left=nodes[parent].left_child, right=nodes[parent].right_child;
+        const double a=(flat ? 1 : nodes[left].alpha)+values(left);
+        const double b=(flat ? 1 : nodes[right].alpha)+values(right);
+        const double q=a+b>2 ? (a-1)/(a+b-2) : 0.5;
+        theta(parent)=std::min(1-epsilon,std::max(epsilon,q));
+    }
+    propagate();
+}
+double PT::objective(double log_likelihood, bool flat) const {
+    double result=log_likelihood;
+    if (!flat) for (int parent : splits) {
+        const double a=nodes[nodes[parent].left_child].alpha;
+        const double b=nodes[nodes[parent].right_child].alpha;
+        if (a>1) result+=(a-1)*std::log(theta(parent));
+        if (b>1) result+=(b-1)*std::log1p(-theta(parent));
+    }
+    return result;
+}
+PT::Stage PT::run_em(bool flat) {
+    Stage result;
+    double likelihood=allocate(counts,false);
+    result.objective.push_back(objective(likelihood,flat));
+    for (int iter=1; iter<=max_iter; ++iter) {
+        Rcpp::checkUserInterrupt();
+        const arma::vec previous=mass;
+        update_splits(counts,flat);
+        double delta=0;
+        for (int leaf : leaves) delta+=std::pow(mass(leaf)-previous(leaf),2);
+        result.difference=std::sqrt(delta);
+        likelihood=allocate(counts,false); // Refresh final counts at final masses.
+        result.objective.push_back(objective(likelihood,flat));
+        result.iterations=iter;
+        if (verbose && (iter==1 || iter%100==0 || result.difference<=tolerance))
+            Rcpp::Rcout << (flat ? "Flat-prior" : "MAP") << " iteration " << iter
+                        << ", terminal-mass change = " << result.difference << "\n";
+        if (result.difference<=tolerance) { result.converged=true; break; }
+    }
+    return result;
+}
+void PT::fit() {
+    if (allocated == 0) {
+        // Historical overlap-count option, separate from the paper's MAP-EM.
+        counts.zeros(nodes.size()); counts(0)=data.n_rows;
+        for (size_t j=1; j<nodes.size(); ++j) {
+            const Node& node=nodes[j];
+            for (arma::uword i=0; i<data.n_rows; ++i) {
+                const double l=data(i,0),r=data(i,1);
+                if (prior==1 && r==INF) counts(j)+=(node.right==INF);
+                else counts(j)+=l==r ? contains(l,node.left,node.right) :
+                    std::max(l,node.left)<std::min(r,node.right);
+            }
+        }
+        update_splits(counts,false); return;
+    }
+    if (max_iter == 0) return;
+    for (int parent : splits) theta(parent)=std::min(1-epsilon,std::max(epsilon,theta(parent)));
+    propagate();
+    if (flat_init) flat_stage=run_em(true);
+    map_stage=run_em(false);
+}
+double PT::conditional_density(double t,double a,double b) const {
+    if (b==INF || !contains(t,a,b)) return 0;
+    if (prior==1) return 1/(b-a);
+    const double ha=hazard(a),width=hazard(b)-ha;
+    if (width<=0) return 0;
+    double log_hazard=std::log(parameters(0));
+    if (prior==3 && parameters(1)!=1) {
+        const double shape=parameters(1);
+        log_hazard+=std::log(shape)+(shape-1)*std::log(parameters(0)*t);
+    }
+    return std::exp(log_hazard+ha-hazard(t)-std::log(-std::expm1(-width)));
+}
+void PT::predict(arma::vec& survival,arma::vec& density) const {
+    if (predictions_cached) {
+        arma::vec leaf_mass(leaves.size());
+        for (size_t j=0; j<leaves.size(); ++j) leaf_mass(j)=mass(leaves[j]);
+        survival=survival_kernel*leaf_mass;
+        density=density_kernel*leaf_mass;
+        return;
+    }
+    survival.zeros(grid.n_elem); density.zeros(grid.n_elem);
+    for (arma::uword i=0; i<grid.n_elem; ++i) {
+        const double t=grid(i);
+        if (t>tau) { survival(i)=NA_REAL; density(i)=NA_REAL; continue; }
+        for (int leaf : leaves) {
+            const Node& node=nodes[leaf];
+            survival(i)+=mass(leaf)*std::exp(log_conditional_probability(t,INF,node.left,node.right));
+            density(i)+=mass(leaf)*conditional_density(t,node.left,node.right);
         }
     }
 }
-
-void PT::EM_step() {
-    bool condition = true;
-    int iter = 1;
-    if (verbose) {
-        std::cout << "Starting EM iterations..." << std::endl;
-    }
-    auto start = std::chrono::high_resolution_clock::now();
-    while (condition && iter <= max_EM_iter)
-    {
-        vec old_terminal_probs = posterior_probs.elem(terminal_indices);
-        re_allocation(); // EM step
-        double diff = arma::norm(posterior_probs.elem(terminal_indices) - old_terminal_probs, 2);
-        condition = (diff > EM_tol);
-        if (verbose) {
-            auto end = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> elapsed = end - start;
-            std::cout << "EM iteration " << iter << ", diff = " << diff << ", time = " << elapsed.count() << " seconds" << std::endl;
-        }
-        iter++;
-    }
-}
-
-
-
-void PT::allocate_observations() {
-    if (allocation_cache_ready) update_observation_probabilities();
-    // Construction stored fractional weights in this matrix. E-steps store
-    // eligibility markers instead, retaining compatible zero-weight nodes.
-    in_node_obs.row(0).ones();
-    n_obs_allocated(0) = n;
-    for (int i = 0; i < nodes_used; ++i) {
-        if (child_nodes[i].first >= 0) {
-            update_allocations(i, child_nodes[i].first, child_nodes[i].second);
+void PT::prepare_predictions() {
+    predictions_cached = grid.n_elem > 0 &&
+        leaves.size() <= (64u*1024u*1024u/(2*sizeof(double)))/grid.n_elem;
+    if (!predictions_cached) return;
+    survival_kernel.set_size(grid.n_elem,leaves.size());
+    density_kernel.set_size(grid.n_elem,leaves.size());
+    for (arma::uword i=0; i<grid.n_elem; ++i) {
+        for (size_t j=0; j<leaves.size(); ++j) {
+            const Node& node=nodes[leaves[j]];
+            survival_kernel(i,j)=grid(i)>tau ? NA_REAL :
+                std::exp(log_conditional_probability(grid(i),INF,node.left,node.right));
+            density_kernel(i,j)=grid(i)>tau ? NA_REAL :
+                conditional_density(grid(i),node.left,node.right);
         }
     }
 }
-
-void PT::re_allocation() {
-    allocate_observations();
-    for (int i = 0; i < nodes_used; i++) {
-
-        // skip terminal nodes
-        if (child_nodes[i].first < 0) {
-            continue;
+Rcpp::List PT::sample(int sweeps,int burn_in,int thin) {
+    if (allocated!=1) Rcpp::stop("DA-Gibbs requires allocated = 1.");
+    if (sweeps<=0 || burn_in<0 || burn_in>=sweeps || thin<1)
+        Rcpp::stop("Require n_sweeps > burn_in >= 0 and thin >= 1.");
+    if (!coverage_prepared) prepare_coverage();
+    const int kept=1+(sweeps-burn_in-1)/thin;
+    const double cells=static_cast<double>(kept)*(leaves.size()+splits.size());
+    if (cells>512.0*1024*1024/sizeof(double))
+        Rcpp::stop("Requested draws exceed 512 MiB; reduce sweeps or increase thin.");
+    arma::mat leaf_draws(kept,leaves.size()),branch_draws(kept,splits.size());
+    Rcpp::IntegerVector iterations(kept);
+    const arma::vec saved_mass=mass,saved_log_mass=log_mass,saved_theta=theta;
+    arma::vec integer_counts;
+    int saved=0;
+    for (int g=1; g<=sweeps; ++g) {
+        Rcpp::checkUserInterrupt();
+        allocate(integer_counts,true);
+        for (int parent : splits) {
+            const int left=nodes[parent].left_child,right=nodes[parent].right_child;
+            // Unrestricted conjugate draws: never apply the MAP clipping bound.
+            theta(parent)=R::rbeta(nodes[left].alpha+integer_counts(left),
+                                  nodes[right].alpha+integer_counts(right));
         }
+        propagate();
+        if (g>burn_in && (g-burn_in-1)%thin==0) {
+            for (size_t j=0; j<leaves.size(); ++j) leaf_draws(saved,j)=mass(leaves[j]);
+            for (size_t j=0; j<splits.size(); ++j) branch_draws(saved,j)=theta(splits[j]);
+            iterations[saved]=g; ++saved;
+        }
+        if (verbose && g%500==0) Rcpp::Rcout << "DA-Gibbs sweep " << g << "/" << sweeps << "\n";
+    }
+    mass=saved_mass; log_mass=saved_log_mass; theta=saved_theta;
+    return Rcpp::List::create(Rcpp::Named("terminal_probs")=leaf_draws,
+        Rcpp::Named("branch_probs")=branch_draws,Rcpp::Named("iterations")=iterations);
+}
+Rcpp::List PT::stage_output(const Stage& stage) const {
+    return Rcpp::List::create(Rcpp::Named("iterations")=stage.iterations,
+        Rcpp::Named("converged")=stage.converged,Rcpp::Named("difference")=stage.difference,
+        Rcpp::Named("log_posterior_kernel")=stage.objective);
+}
+Rcpp::List PT::output() const {
+    const size_t n=nodes.size();
+    arma::vec left(n),right(n),depth(n),alpha(n),center(n),center_branch(n),branch(n),initial(n);
+    Rcpp::IntegerVector parent(n),left_child(n),right_child(n);
+    double prior_tail_mean=1; int tail=-1;
+    for (size_t i=0; i<n; ++i) {
+        const Node& node=nodes[i];
+        left(i)=node.left; right(i)=node.right; depth(i)=node.depth; alpha(i)=node.alpha;
+        center(i)=std::exp(node.log_center); initial(i)=node.initial_count;
+        parent[i]=node.parent; left_child[i]=node.left_child; right_child[i]=node.right_child;
+        center_branch(i)=i==0 ? 1 : std::exp(node.log_center-nodes[node.parent].log_center);
+        branch(i)=i==0 ? 1 : (nodes[node.parent].left_child==static_cast<int>(i) ? theta(node.parent) : 1-theta(node.parent));
+        if (node.right==INF && node.left_child>=0) {
+            const double a=nodes[node.left_child].alpha,b=nodes[node.right_child].alpha;
+            prior_tail_mean*=b/(a+b);
+        }
+        if (node.left_child<0 && node.right==INF) tail=i;
+    }
+    return Rcpp::List::create(Rcpp::Named("left_bound")=left,Rcpp::Named("right_bound")=right,
+        Rcpp::Named("node_levels")=depth,Rcpp::Named("alpha")=alpha,
+        Rcpp::Named("n_obs_allocated")=counts,Rcpp::Named("posterior_probs")=mass,
+        Rcpp::Named("terminal_nodes")=leaves,Rcpp::Named("parent_nodes")=parent,
+        Rcpp::Named("left_children")=left_child,Rcpp::Named("right_children")=right_child,
+        Rcpp::Named("split_nodes")=splits,Rcpp::Named("branch_probs")=branch,
+        Rcpp::Named("reference_probs")=center,Rcpp::Named("reference_branch_probs")=center_branch,
+        Rcpp::Named("initial_allocations")=initial,Rcpp::Named("largest_obs")=tau,
+        Rcpp::Named("tail_node")=tail,Rcpp::Named("tail_prob")=mass(tail),
+        Rcpp::Named("tail_prior")=s0,Rcpp::Named("prior_tail_mean")=prior_tail_mean,
+        Rcpp::Named("flat_fit")=stage_output(flat_stage),Rcpp::Named("map_fit")=stage_output(map_stage));
+}
 
-        const int left_child = child_nodes[i].first;
-        const int right_child = child_nodes[i].second;
+// Plain R data are used instead of an external pointer, so saved model objects
+// remain usable after saveRDS/readRDS and in a new R process.
+Rcpp::List PT::state(const Rcpp::List& tree_output) const {
+    arma::vec log_center(nodes.size());
+    for (size_t i=0; i<nodes.size(); ++i) log_center(i)=nodes[i].log_center;
+    return Rcpp::List::create(Rcpp::Named("version")=1,
+        Rcpp::Named("X")=data,Rcpp::Named("prior")=prior,
+        Rcpp::Named("parameters")=parameters,Rcpp::Named("tau")=tau,
+        Rcpp::Named("gamma")=gamma,Rcpp::Named("kappa")=kappa,Rcpp::Named("s0")=s0,
+        Rcpp::Named("min_count")=min_count,Rcpp::Named("epsilon")=epsilon,
+        Rcpp::Named("allocated")=allocated,Rcpp::Named("max_depth")=max_depth,
+        Rcpp::Named("flat_init")=flat_init,Rcpp::Named("tree")=tree_output,
+        Rcpp::Named("log_mass")=log_mass,Rcpp::Named("log_center")=log_center,
+        Rcpp::Named("theta")=theta);
+}
 
-        // posterior probabilities (initially set to prior probabilities)
-        double total = alpha(left_child) + alpha(right_child) + n_obs_allocated(left_child) + n_obs_allocated(right_child) - 2;
-        double left_count = alpha(left_child) + n_obs_allocated(left_child) - 1;
-        if (total > SMALL_VALUE) {
-            double left_prob = min(max(left_count / total, SPLIT_PROB_EPSILON), 1.0 - SPLIT_PROB_EPSILON);
-            new_posterior_probs(left_child) = left_prob * new_posterior_probs(i);
-            new_posterior_probs(right_child) = (1 - left_prob) * new_posterior_probs(i);
+PT::PT(const Rcpp::List& saved, bool verbose) : verbose(verbose) {
+    if (!saved.containsElementNamed("version") || Rcpp::as<int>(saved["version"])!=1)
+        Rcpp::stop("Unsupported saved PT model; refit with the current package.");
+    data=Rcpp::as<arma::mat>(saved["X"]);
+    prior=Rcpp::as<int>(saved["prior"]);
+    parameters=Rcpp::as<arma::vec>(saved["parameters"]);
+    tau=Rcpp::as<double>(saved["tau"]);
+    gamma=Rcpp::as<double>(saved["gamma"]);
+    kappa=Rcpp::as<double>(saved["kappa"]);
+    s0=Rcpp::as<double>(saved["s0"]);
+    min_count=Rcpp::as<double>(saved["min_count"]);
+    epsilon=Rcpp::as<double>(saved["epsilon"]);
+    allocated=Rcpp::as<int>(saved["allocated"]);
+    max_depth=Rcpp::as<int>(saved["max_depth"]);
+    flat_init=Rcpp::as<bool>(saved["flat_init"]);
+    max_iter=0; tolerance=0; h_tau=prior==1 ? 0 : hazard(tau);
+    const Rcpp::List tree=saved["tree"];
+    const arma::vec left=Rcpp::as<arma::vec>(tree["left_bound"]);
+    const arma::vec right=Rcpp::as<arma::vec>(tree["right_bound"]);
+    const arma::vec depth=Rcpp::as<arma::vec>(tree["node_levels"]);
+    const arma::vec alpha=Rcpp::as<arma::vec>(tree["alpha"]);
+    const arma::vec initial=Rcpp::as<arma::vec>(tree["initial_allocations"]);
+    const arma::vec center=Rcpp::as<arma::vec>(saved["log_center"]);
+    const Rcpp::IntegerVector parent=tree["parent_nodes"], lc=tree["left_children"], rc=tree["right_children"];
+    mass=Rcpp::as<arma::vec>(tree["posterior_probs"]);
+    log_mass=Rcpp::as<arma::vec>(saved["log_mass"]);
+    theta=Rcpp::as<arma::vec>(saved["theta"]);
+    counts=Rcpp::as<arma::vec>(tree["n_obs_allocated"]);
+    const size_t n=left.n_elem;
+    if (n<3 || right.n_elem!=n || depth.n_elem!=n || alpha.n_elem!=n ||
+        initial.n_elem!=n || center.n_elem!=n || mass.n_elem!=n || log_mass.n_elem!=n ||
+        theta.n_elem!=n || counts.n_elem!=n || static_cast<size_t>(parent.size())!=n ||
+        static_cast<size_t>(lc.size())!=n || static_cast<size_t>(rc.size())!=n)
+        Rcpp::stop("Invalid saved PT model dimensions.");
+    for (size_t i=0; i<n; ++i) {
+        if ((i==0 && parent[i]!=-1) || (i>0 && (parent[i]<0 || parent[i]>=static_cast<int>(i))) ||
+            ((lc[i]<0)!=(rc[i]<0)) || (lc[i]>=0 &&
+             (lc[i]<=static_cast<int>(i) || rc[i]<=static_cast<int>(i) ||
+              lc[i]>=static_cast<int>(n) || rc[i]>=static_cast<int>(n))))
+            Rcpp::stop("Invalid saved PT tree links.");
+        nodes.push_back({left(i),right(i),center(i),initial(i),alpha(i),
+                         static_cast<int>(depth(i)),parent[i],lc[i],rc[i]});
+        if (lc[i]<0) leaves.push_back(i); else splits.push_back(i);
+    }
+    // No tree building, rate estimation, EM, or grid evaluation occurs here.
+}
+
+Rcpp::List PT::predict_at(const arma::vec& times,const arma::mat& leaf_draws) {
+    for (double t : times)
+        if (std::isnan(t) || t<0) Rcpp::stop("Prediction times must be nonnegative and nonmissing.");
+    if (leaf_draws.n_rows>0 && (leaf_draws.n_cols!=leaves.size() ||
+        !leaf_draws.is_finite() || arma::any(arma::vectorise(leaf_draws)<0)))
+        Rcpp::stop("Invalid saved posterior leaf draws.");
+    const double cells=2.0*times.n_elem*leaf_draws.n_rows;
+    if (cells>512.0*1024*1024/sizeof(double))
+        Rcpp::stop("Prediction draws exceed 512 MiB; predict in smaller time batches.");
+    grid=times;
+    prepare_predictions();
+    arma::vec survival,density;
+    predict(survival,density);
+    Rcpp::List result=Rcpp::List::create(Rcpp::Named("survival_probs")=survival,
+                                        Rcpp::Named("density_probs")=density);
+    if (leaf_draws.n_rows>0) {
+        arma::mat survival_draws(leaf_draws.n_rows,grid.n_elem),density_draws(leaf_draws.n_rows,grid.n_elem);
+        if (predictions_cached) {
+            survival_draws=leaf_draws*survival_kernel.t();
+            density_draws=leaf_draws*density_kernel.t();
         } else {
-            new_posterior_probs(left_child) = 0.5 * new_posterior_probs(i);
-            new_posterior_probs(right_child) = 0.5 * new_posterior_probs(i);
-        }
-    }
-    posterior_probs = new_posterior_probs;
-}
-
-void PT::update_allocations(int parent, int left_child, int right_child) {
-    // reset allocations for children
-    in_node_obs.row(left_child).zeros();
-    in_node_obs.row(right_child).zeros();
-    n_obs_allocated(left_child) = 0.0;
-    n_obs_allocated(right_child) = 0.0;
-
-    // indices of observations allocated to the parent node
-    arma::uvec parent_idx = arma::find(in_node_obs.row(parent) == 1.0);
-
-    for (arma::uword k = 0; k < parent_idx.n_elem; ++k) {
-        const arma::uword obs = parent_idx(k);
-        const double left_obs = X(obs, 0);
-        const double right_obs = X(obs, 1);
-
-        if (allocated == 1) {
-            // update for left child
-            if (max(left_obs, left_bound(left_child)) <= min(right_obs, right_bound(left_child))) {
-
-                if ((left_obs > left_bound(left_child) ||
-                     (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
-                    right_obs <= right_bound(left_child)) {
-                    // point mass
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += 1.0;
-                } else if (right_obs != left_obs) {
-                    in_node_obs(left_child, obs) = 1.0;
-                    n_obs_allocated(left_child) += allocation_cache_ready ?
-                        cached_individual_allocation(obs, left_child) :
-                        update_individual_allocation(left_obs, right_obs, left_bound(left_child), right_bound(left_child));
-                }
+            const arma::vec saved_mass=mass;
+            for (arma::uword g=0; g<leaf_draws.n_rows; ++g) {
+                Rcpp::checkUserInterrupt();
+                for (size_t j=0; j<leaves.size(); ++j) mass(leaves[j])=leaf_draws(g,j);
+                predict(survival,density);
+                survival_draws.row(g)=survival.t(); density_draws.row(g)=density.t();
             }
-            // update for right child
-            if (max(left_obs, left_bound(right_child)) <= min(right_obs, right_bound(right_child))) {
-
-                if ((left_obs > left_bound(right_child) ||
-                     (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
-                    right_obs <= right_bound(right_child)) {
-                    // point mass
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += 1.0;
-                } else if (right_obs != left_obs) {
-                    in_node_obs(right_child, obs) = 1.0;
-                    n_obs_allocated(right_child) += allocation_cache_ready ?
-                        cached_individual_allocation(obs, right_child) :
-                        update_individual_allocation(left_obs, right_obs, left_bound(right_child), right_bound(right_child));
-                }
-            }
-        } else if (allocated == 0) {
-            // hard allocation for MW method
-            if ((left_obs > left_bound(left_child) ||
-                 (left_obs == 0.0 && left_bound(left_child) == 0.0)) &&
-                right_obs <= right_bound(left_child)) {
-                in_node_obs(left_child, obs) = 1.0;
-                n_obs_allocated(left_child) += 1.0;
-            }
-            if ((left_obs > left_bound(right_child) ||
-                 (left_obs == 0.0 && left_bound(right_child) == 0.0)) &&
-                right_obs <= right_bound(right_child)) {
-                in_node_obs(right_child, obs) = 1.0;
-                n_obs_allocated(right_child) += 1.0;
-            }
-        } else {
-            Rcpp::stop("Invalid allocation type.");
+            mass=saved_mass;
         }
+        result["survival_draws"]=survival_draws;
+        result["density_draws"]=density_draws;
     }
-    if (allocated == 1){
-    // check for sum of allocations
-        if (abs(n_obs_allocated(left_child) + n_obs_allocated(right_child) - n_obs_allocated(parent)) > 1e-5) {
-            std::cout << "Parent node: " << n_obs_allocated(parent) << ", Left child: " << n_obs_allocated(left_child) << ", Right child: " << n_obs_allocated(right_child) << std::endl;
-            std::cout << "Sum of allocations exceeds parent sample size." << std::endl;
-        }
-    }
-}
-
-void PT::prepare_em_cache() {
-    terminal_indices = arma::conv_to<arma::uvec>::from(terminal_nodes);
-    child_nodes.assign(nodes_used + 1, std::make_pair(-1, -1));
-    for (int node = 1; node <= nodes_used; ++node) {
-        const int parent = static_cast<int>(parent_nodes(node));
-        if (child_nodes[parent].first < 0) child_nodes[parent].first = node;
-        else child_nodes[parent].second = node;
-    }
-
-    allocation_cache_ready = false;
-    if (nodes_used == 0 || n == 0 || !posterior_probs.is_finite()) return;
-
-    bool has_censored = false;
-    for (int obs = 0; obs < n; ++obs) {
-        const double left = X(obs, 0), right = X(obs, 1);
-        if (!arma::is_finite(left) || std::isnan(right) || right < left) return;
-        has_censored = has_censored || left != right;
-    }
-    if (!has_censored) return;
-
-    // Descendant leaves can replace interval intersections only for a proper
-    // partition. Preserve the original path for degenerate numerical splits.
-    for (int node = 0; node <= nodes_used; ++node) {
-        if (!arma::is_finite(left_bound(node)) || std::isnan(right_bound(node)) ||
-            right_bound(node) <= left_bound(node)) return;
-        const int left = child_nodes[node].first;
-        const int right = child_nodes[node].second;
-        if (left >= 0 && (right < 0 || left_bound(left) != left_bound(node) ||
-            right_bound(left) != left_bound(right) || right_bound(right) != right_bound(node) ||
-            right_bound(left) <= left_bound(node) || right_bound(left) >= right_bound(node))) return;
-    }
-
-    // Bound the additional dense probability cache to 64 MiB per fit.
-    const uword max_cache_elements = (64u * 1024u * 1024u) / sizeof(double);
-    if (terminal_indices.n_elem > max_cache_elements / static_cast<uword>(n)) return;
-    observation_leaf_probabilities.zeros(terminal_indices.n_elem, n);
-    observation_probabilities.zeros(n);
-    for (int obs = 0; obs < n; ++obs) {
-        if (X(obs, 0) == X(obs, 1)) continue;
-        for (uword k = 0; k < terminal_indices.n_elem; ++k) {
-            const uword leaf = terminal_indices(k);
-            const double probability = terminal_probability(X(obs, 0), X(obs, 1),
-                                                            left_bound(leaf), right_bound(leaf));
-            if (!arma::is_finite(probability)) {
-                observation_leaf_probabilities.reset();
-                observation_probabilities.reset();
-                return;
-            }
-            observation_leaf_probabilities(k, obs) = probability;
-        }
-    }
-
-    node_terminal_indices.assign(nodes_used + 1, std::vector<uword>());
-    for (uword k = 0; k < terminal_indices.n_elem; ++k) {
-        int node = static_cast<int>(terminal_indices(k));
-        while (node > 0) {
-            node_terminal_indices[node].push_back(k);
-            node = static_cast<int>(parent_nodes(node));
-        }
-    }
-    allocation_cache_ready = true;
-}
-
-void PT::update_observation_probabilities() {
-    for (int obs = 0; obs < n; ++obs) {
-        if (X(obs, 0) == X(obs, 1)) continue;
-        double probability = 0.0;
-        for (uword k = 0; k < terminal_indices.n_elem; ++k) {
-            probability += posterior_probs(terminal_indices(k)) * observation_leaf_probabilities(k, obs);
-        }
-        observation_probabilities(obs) = probability;
-    }
-}
-
-double PT::cached_individual_allocation(uword obs, int node) const {
-    double joint_probability = 0.0;
-    // Keep the original leaf summation order. Summing child totals or using
-    // prefix-sum subtraction would change floating-point rounding.
-    for (uword k : node_terminal_indices[node]) {
-        joint_probability += posterior_probs(terminal_indices(k)) * observation_leaf_probabilities(k, obs);
-    }
-    const double probability = observation_probabilities(obs);
-    return probability > SMALL_VALUE ? joint_probability / probability : 0.0;
-}
-
-double PT::update_individual_allocation(double left_obs, double right_obs, double left_node, double right_node) {
-    // Update individual allocation based on the terminal nodes and previous posterior probabilities
-    double joint_left = max(left_obs, left_node);
-    double joint_right = min(right_obs, right_node);
-    double p_joint = 0.0;
-    double p_data = 0.0;
-
-    // Loop over all terminal nodes
-    for (arma::uword t = 0; t < terminal_nodes.n_rows; ++t) {
-        int node = static_cast<int>(terminal_nodes(t));
-        double node_left = left_bound(node);
-        double node_right = right_bound(node);
-
-        // Integrate the same conditional base distribution used by output().
-        p_joint += posterior_probs(node) *
-            terminal_probability(joint_left, joint_right, node_left, node_right);
-        p_data += posterior_probs(node) *
-            terminal_probability(left_obs, right_obs, node_left, node_right);
-    }
-
-    // Avoid division by zero
-    if (p_data > SMALL_VALUE) {
-        return p_joint / p_data;
-    }
-
-    return 0.0;
-}
-
-
-void PT::update_tree_size() {
-    int old_size = NODES_NUM;
-    NODES_NUM = 2 * NODES_NUM + 1; // double the size of the tree
-    left_bound.resize(NODES_NUM);
-    right_bound.resize(NODES_NUM);
-    node_levels.resize(NODES_NUM);
-    alpha.resize(NODES_NUM);
-    in_node_obs.resize(NODES_NUM, n);
-    n_obs_allocated.resize(NODES_NUM);
-    posterior_probs.resize(NODES_NUM);
-    new_posterior_probs.resize(NODES_NUM);
-    parent_nodes.resize(NODES_NUM);
-
-    // Initialize new nodes
-    for (int i = old_size; i < NODES_NUM; i++) {
-        left_bound(i) = 0.0;
-        right_bound(i) = 0.0;
-        node_levels(i) = 0;
-        alpha(i) = 0.0;
-        in_node_obs.row(i).zeros();
-        n_obs_allocated(i) = 0.0;
-        posterior_probs(i) = 0.0;
-        new_posterior_probs(i) = 0.0;
-        parent_nodes(i) = -1.0;
-    }
-}
-
-
-double PT::base_cumulative_hazard(double x) const {
-    if (prior == 2) {
-        return prior_params(0) * x;
-    } else if (prior == 3) {
-        return pow(prior_params(0) * x, prior_params(1));
-    }
-    Rcpp::stop("Invalid prior type.");
-    return 0.0;
-}
-
-double PT::terminal_probability(double left, double right, double a, double b) const {
-    const double lo = max(left, a);
-    const double hi = min(right, b);
-    if (lo >= hi) {
-        return 0.0;
-    }
-    if (prior == 1 && !arma::is_finite(b)) {
-        // The uniform tail is a point mass at infinity. Finite observation
-        // intervals receive none of it; right-censored intervals include it.
-        return right == arma::datum::inf ? 1.0 : 0.0;
-    }
-
-    // Conditional continuous probability; endpoint inclusion does not change it.
-    if (prior == 1) return (hi - lo) / (b - a);
-    const double h_a = base_cumulative_hazard(a);
-    const double h_lo = base_cumulative_hazard(lo);
-    const double denom = -expm1(h_a - base_cumulative_hazard(b));
-    const double numerator = exp(h_a - h_lo) *
-        -expm1(h_lo - base_cumulative_hazard(hi));
-    if (denom > 0.0) {
-        return min(max(numerator / denom, 0.0), 1.0);
-    }
-    return 0.0;
-}
-
-double PT::terminal_density(double t, double a, double b) const {
-    // Match exact-event allocation: (a, b], or [0, b] when a is zero.
-    // Infinity is not an event time, even for an unbounded terminal interval.
-    if (std::isinf(t) || t < a || t > b || (t == a && a != 0.0)) {
-        return 0.0;
-    }
-    if (prior == 1) return arma::is_finite(b) ? 1.0 / (b - a) : 0.0;
-    const double h_a = base_cumulative_hazard(a);
-    const double denom = -expm1(h_a - base_cumulative_hazard(b));
-    if (denom > 0.0) {
-        const double lambda = prior_params(0);
-        double log_hazard = log(lambda);
-        if (prior == 3 && prior_params(1) != 1.0) {
-            const double k = prior_params(1);
-            log_hazard += log(k) + (k - 1.0) * log(lambda * t);
-        }
-        return exp(log_hazard + h_a - base_cumulative_hazard(t) - log(denom));
-    }
-    return 0.0;
-}
-
-List PT::output() {
-    // compute survival probabilities and densities at test_seq by mixing over terminal nodes
-    survival_probs = vec(test_seq.n_elem, fill::zeros);
-    vec density_probs(test_seq.n_elem, fill::zeros);
-
-    for (arma::uword i = 0; i < test_seq.n_elem; ++i) {
-        const double t = test_seq(i);
-        double s = 0.0;
-        double d = 0.0;
-
-        for (arma::uword r = 0; r < terminal_nodes.n_rows; ++r) {
-            const int node = static_cast<int>(terminal_nodes(r));
-            const double a = left_bound(node);
-            double b = right_bound(node);
-            const double w = posterior_probs(node);
-
-            d += w * terminal_density(t, a, b);
-
-            s += w * terminal_probability(t, arma::datum::inf, a, b);
-        }
-
-        // clamp numeric noise
-        survival_probs(i) = s;
-        density_probs(i) = d;
-    }
-
-    return List::create(
-        Named("left_bound") = left_bound.head(nodes_used+1),
-        Named("right_bound") = right_bound.head(nodes_used+1),
-        Named("node_levels") = node_levels.head(nodes_used+1),
-        Named("alpha") = alpha.head(nodes_used+1),
-        Named("n_obs_allocated") = n_obs_allocated.head(nodes_used+1),
-        Named("posterior_probs") = posterior_probs.head(nodes_used+1),
-        Named("terminal_nodes") = terminal_nodes,
-        Named("survival_probs") = survival_probs,
-        Named("density_probs") = density_probs
-    );
-}
-
-
-
-
-
-void PT::clear(){
-    // clear all member variables
-    in_node_obs.clear();
-    new_posterior_probs.clear();
-    parent_nodes.clear();
+    return result;
 }

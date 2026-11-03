@@ -2,46 +2,79 @@
 
 [Back to README](../README.md)
 
-## Statistical and interface limitations
+## Interpretation
 
-| Limitation | Practical consequence |
-| --- | --- |
-| `survPT()` returns point estimates only | No built-in confidence bands, posterior draws, or convergence flag |
-| Inputs are univariate with no covariates | No multivariate joint survival or regression interface |
-| No sampling-truncation or delayed-entry arguments | Do not treat the `support` setting as a delayed-entry correction |
-| Uniform PT places its tail mass at infinity | Survival stays at that mass beyond the largest finite endpoint; finite-time density integrates to one minus the tail mass |
-| Partition is fixed after initialization | EM does not revisit early stopping or split locations |
-| Cumulative-hazard calculations still use finite machine precision | Extreme rates, shapes, or tail locations can overflow or lose precision |
-| Input checks are incomplete | Validate missing values, numeric types, interval ordering, support, and iteration controls yourself |
-| All bases require root support `[0, Inf]` | Finite upper bounds and positive lower support bounds are not accepted |
+- All families leave the tail shape unspecified. Only its mass `S(tau)` is
+  estimated; survival and density above `tau` return `NA`. Full mean event time
+  and extrapolated quantiles are not identified by this implementation.
+- DA-Gibbs targets the posterior on the retained tree with fixed base
+  parameters. It does not integrate over tree selection or uncertainty in an
+  estimated exponential rate. The Weibull body center is a software extension
+  of the manuscript's uniform/exponential choices.
+- Reported credible intervals are pointwise, not simultaneous bands. Finite
+  Gibbs runs require mixing assessment. ESS/MCSE are approximate single-chain
+  diagnostics, not convergence certification.
+- MAP-EM may have multiple stationary points. Flat-prior initialization is the
+  manuscript's default; monotone objective ascent alone does not prove global
+  optimality. Inspect both convergence flags and iteration caps.
+- Beta parameters are floored at one. `Prior$s0` is the reference tail target;
+  `Prior$tail_mean` is the actual mean induced by the floored prior, and can differ.
+- The model is univariate with no covariates, delayed entry or sampling-truncation
+  likelihood. All bases use support `c(0,Inf)`.
+- Finite precision still limits extreme rates, shapes and observation scales.
+  Unrepresentable automatic tail calibration raises an error requesting explicit
+  `s0`. At zero, Weibull body density with shape below one is mathematically
+  infinite; survival and allocation remain well-defined.
 
-The field name `Posterior_Probs` is historical. Read [Methods](methods.md) for the actual PT branch-mass update.
+## Compatibility with 0.2.1
 
-## Simulation and legacy examples
+Version 0.3.0 intentionally changes the reference construction, tail-path priors,
+initialization and tails. Old numerical results are not expected to be reproduced.
+It preserves deterministic result names and provides posterior summaries
+separately. Exponential and Weibull no longer extrapolate a parametric tail;
+uniform no longer treats the tail as an atom at infinity.
 
-- `data_cs()` overwrites its event-by-inspection `status` with an exact-event test. Fit current-status data using `L` and `R`; the returned `status` is not an event-by-inspection indicator.
-- `data_ic()` uses a legacy inspection loop `1:Ri`. If `Ri` is zero, R evaluates `1:0` as two indices rather than an empty sequence. Do not claim exact reproduction of an intended zero-inspection design without correcting and validating that generator.
-- `estimate()` and `estimate_exp()` return only `optim()$par`. Inspect a separately run optimization if diagnostics are needed; small samples or heavily censored samples may not identify stable parameters.
-- Historical scripts in `Examples/` include large simulations, hard-coded worker counts, interactive viewers, and experimental comparison code. The validated starting point is `Examples/quickstart.R`; see the [example inventory](../Examples/README.md).
+Version 0.3.2 makes `survPT()` exclusively fit-only. Use
+`predict(fit,times,level)` for curves and uncertainty: it runs sampling during
+prediction unless `posterior=FALSE` or explicit `samples` are supplied. The
+previous combined arguments and fixed `support` argument have been removed. Model
+lists saved by versions before 0.3.1 must be refitted to obtain serializable
+state for the new prediction and sampling methods.
 
-These limitations are documented to distinguish observed software behavior from the intended statistical model. A documentation update does not change those algorithms.
+`allocated=0` is retained as a separate historical overlap-count estimator with
+the new priors and partition. It does not support posterior sampling.
 
-## Common problems
+## Numerical and package use
 
-**GitHub installation fails.** Check the repository URL, the requested commit or tag, and the error message. For compiler or dependency failures, follow [Installation](installation.md). Report a reproducible installation problem in the [issue tracker](https://github.com/HG-KaiBai/SurvPT/issues).
+**No finite exponential MLE:** all-right-censored data, or data whose likelihood
+is maximized at infinite rate, require an explicit positive `prior_params` when
+using exponential centering. The automatic estimator no longer uses an arbitrary
+rate floor of 0.001.
 
-**Compiler, `make`, or headers are missing.** Install the toolchain matching your R distribution, then reinstall dependencies. See [Installation](installation.md).
+**Missing predictions beyond the data:** use a grid within `[0,fit$Tau]` and read
+the separate `fit$Tail_Prob`. These missing values implement the unspecified-tail
+model rather than a numerical failure.
 
-**The loaded version is not the installed version.** Restart R, run `find.package("SurvPT")`, inspect `.libPaths()`, and reinstall into the intended library. `devtools::load_all()` uses a checkout, whereas `library(SurvPT)` loads an installed package.
+**Slow or large runs:** lower tree depth, raise `min_count`, reduce grid size, or
+retain fewer draws. Prediction's default `keep_draws=FALSE` drops draws from its
+result but the calculation still temporarily stores them. Standalone `samplePT()`
+retains tree draws for reuse. Coverage and prediction caches each have
+a 64 MiB cap; native sample arrays have a 512 MiB limit before R overhead.
 
-**An evaluation grid cannot be generated.** Check that the first two data columns contain finite observation endpoints, or supply a finite sorted `test_seq`. The PT default grid includes right-censoring times and works for all-right-censored data with finite left endpoints. Such data may still contain insufficient information for the intended fit.
+**Loaded old version:** restart R and use `devtools::load_all()` for the checkout,
+or install it and verify `find.package("SurvPT")` and `packageVersion("SurvPT")`.
+Build dependencies are described in [Installation](installation.md).
 
-**“Sum of allocations exceeds parent sample size.”** This diagnostic is emitted when child and parent counts differ, even if the difference is a deficit. Check support/interval compatibility and model settings. Do not interpret the result as validated merely because the fit returned.
+## Unchanged historical research scripts
 
-**A uniform curve stays above zero beyond the data.** This is the fitted point mass at infinity. Its finite-time density is zero beyond the largest finite endpoint. Exponential and Weibull bases instead have continuous tails.
+- `data_cs()` sets `status` using `L==R`; fit its interval columns rather than
+  treating that field as the event-by-inspection indicator.
+- `data_ic()` retains its historical `1:Ri` inspection loop, which needs care
+  when `Ri=0`.
+- The Weibull `estimate()` helper retains its existing numerical optimization;
+  it returns only parameters and requires separate diagnostic assessment.
+- Several scripts launch large experiments, invoke viewers, or assume forked
+  workers unsupported on Windows. Start from `Examples/quickstart.R` and
+  `Examples/posterior.R`. Research scripts must use grids within each fit's `tau`.
 
-**A historical simulation fails on Windows.** Scripts using `parallel::mclapply()` with multiple forked workers require adaptation. Start serially with one worker, or implement and validate a socket-cluster workflow.
-
-## Package-check notes
-
-Validation commands are listed in the [example guide](../Examples/README.md#validation). Package checks can report debug flags overriding user settings, GNU make extensions, nonportable example filenames, citation-file placement, undocumented exports, and native `std::cout` output. These findings are separate from the numerical regression checks.
+Run `tests/scpt.R` and `tests/interfaces.R` for numerical and separated-interface checks.

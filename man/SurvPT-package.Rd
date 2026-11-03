@@ -16,9 +16,14 @@ interval endpoints. Exact events, interval censoring, right censoring,
 and current status share this interface. See its help page for base
 parameters, support, tail conventions, and returned survival and density
 estimates. Use \code{citation("SurvPT")} for the software reference.
+Model fitting is independent of the prediction grid: call
+\code{predict(fit, times, 0.95)} to run posterior sampling and prediction at the
+requested times. \code{samplePT()} also exposes standalone sampling.
 
-SurvPT is distributed under the MIT license. The package provides point
-estimates, not posterior samples or uncertainty intervals.
+SurvPT is distributed under the MIT license. It provides deterministic
+MAP-EM fits and optional DA-Gibbs posterior means and pointwise credible
+intervals. The tail is represented only by its probability mass for every
+body centering family; predictions beyond the observed range are undefined.
 }
 \seealso{
 \code{\link{survPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()},

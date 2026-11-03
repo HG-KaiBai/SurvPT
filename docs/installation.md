@@ -26,16 +26,31 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.2.1.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.4.0.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.2.1.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.4.0.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
 
 `repos = NULL` does not fetch missing dependencies for this local archive, so install those first. Restart R before replacing a loaded package, particularly on Windows where a loaded DLL can be locked.
+
+## Install the Windows binary
+
+The `SurvPT_0.4.0.zip` binary is built with R 4.5.1 for Windows x64. With R 4.5.x,
+set the working directory to the archive's location and install it directly:
+
+```r
+install.packages("Rcpp")
+install.packages("SurvPT_0.4.0.zip", repos = NULL, type = "win.binary")
+library(SurvPT)
+packageVersion("SurvPT")
+```
+
+This binary installation does not require local compilation. Use the source
+archive and the appropriate compiler toolchain for other platforms.
 
 ## Install from a checkout
 
@@ -63,6 +78,12 @@ Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Ex
 
 ## Reproducibility
 
-Version 0.2.1 changes the partition to observed-range median splits followed by a final tail split. All bases require `support = c(0, Inf)`. The uniform tail is a point mass at infinity. Fractional allocation now initializes all conditional branches to one half, then allocates observations through the complete terminal mixture; this differs from earlier 0.2.1 builds that initialized counts directly from the base and placed all uniform right-censored records in the tail. Refit earlier analyses when adopting these changes; see [Methods](methods.md).
+Version 0.4.0 uses reference-count pruning, asymmetric tail-path Beta priors,
+flat-prior initialization followed by MAP-EM, and optional DA-Gibbs. All families
+now leave the tail shape unspecified and return `NA` beyond the largest finite
+endpoint. Deterministic and posterior predictions are returned by `predict()`.
+`survPT()` accepts only fitting parameters; use
+`predict(fit,times,0.95)` to sample and predict at target times. Refit earlier analyses when adopting these changes;
+see [Methods](methods.md) and [NEWS](../NEWS.md).
 
 Version 0.2.0 changes censored-data allocations for exponential and Weibull PT bases and for the uniform infinite terminal interval. Refit analyses made with 0.1.0 instead of assuming identical estimates. Record `packageVersion("SurvPT")`, `sessionInfo()`, the chosen support, base parameters, stopping controls, and source commit or archive checksum.

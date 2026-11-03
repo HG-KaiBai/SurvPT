@@ -124,7 +124,7 @@ loglike_exp <- function(theta, LB, RB){
     } else if (LB[i] == RB[i]){
       temp = temp + log(theta[1]) -(theta[1]*LB[i])
     } else {
-      temp = temp + log(exp(-(theta[1]*LB[i])) - exp(-(theta[1]*RB[i])))
+      temp = temp - theta[1]*LB[i] + log(-expm1(-theta[1]*(RB[i]-LB[i])))
     }
   }
   return(-temp)
@@ -149,9 +149,8 @@ gradient_exp <- function(theta, LB, RB){
     } else if (LB[i] == RB[i]){
       g[1] = g[1] + 1/theta[1] - LB[i]
     } else {
-      g[1] = g[1] +
-        (-exp(-(theta[1]*LB[i])) *LB[i] + exp(-(theta[1]*RB[i]))* RB[i])/
-        (exp(-(theta[1]*LB[i])) - exp(-(theta[1]*RB[i])))
+      width = RB[i] - LB[i]
+      g[1] = g[1] - LB[i] + width/expm1(theta[1]*width)
     }
   }
   return(-g)
@@ -160,15 +159,14 @@ gradient_exp <- function(theta, LB, RB){
 
 #' Fit an exponential distribution to censored event times
 #'
-#' Minimize the negative log-likelihood with an analytic gradient using
-#' `stats::optim()` and the `L-BFGS-B` method.
+#' Solve the monotone likelihood score on a rescaled time axis.
 #'
 #' @inheritParams loglike
-#' @details The starting rate is `0.01` and the lower bound is `0.001`.
-#'   The result can be passed to \code{\link{survPT}()} with `prior = 2`. Only the
-#'   optimizer's parameter estimate is returned; convergence status, standard
-#'   errors, and objective values are not exposed. A returned value alone does
-#'   not establish convergence or identifiability.
+#' @details Uses stable exponential differences and no artificial lower bound
+#'   on the rate. An error is raised when a finite positive MLE does not exist,
+#'   including all-right-censored data. Supply explicit `prior_params` to
+#'   \code{\link{survPT}()} in that case. This estimate is held fixed during
+#'   tree fitting and sampling; uncertainty in it is not propagated.
 #' @return A length-one numeric vector containing the estimated rate. Its
 #'   reciprocal is the exponential mean.
 #' @seealso \code{\link{estimate}()}, \code{\link{survPT}()}
@@ -178,7 +176,22 @@ gradient_exp <- function(theta, LB, RB){
 #' d <- data_rc(seed = 123, n = 30, K = 1, Lambda = 0.4, q = 0.3)
 #' estimate_exp(d$L, d$R)
 estimate_exp <- function(LB, RB){
-  return(optim(par = c(0.01), fn = loglike_exp, LB = LB, RB = RB,
-               gr = gradient_exp, method = "L-BFGS-B", lower = c(0.001))$par)
+  if (!is.numeric(LB) || !is.numeric(RB) || !length(LB) || length(LB) != length(RB) ||
+      anyNA(LB) || anyNA(RB) || any(!is.finite(LB)) || any(LB < 0) || any(RB < LB))
+    stop('Require numeric 0 <= LB <= RB, finite LB, and no missing endpoints.')
+  if (!any(is.finite(RB)) || sum(LB) == 0)
+    stop('A finite positive exponential MLE does not exist; supply prior_params explicitly.')
+  time_scale <- max(c(LB,RB[is.finite(RB)]))
+  left <- LB/time_scale
+  exact <- LB == RB
+  finite_interval <- is.finite(RB) & !exact
+  width <- (RB[finite_interval]-LB[finite_interval])/time_scale
+  score <- function(rate) sum(exact)/rate + sum(width/expm1(rate*width)) - sum(left)
+  upper <- 1
+  while (score(upper) > 0 && is.finite(upper*2)) upper <- upper*2
+  if (score(upper) > 0) stop('The exponential MLE exceeds the numerical range; supply prior_params.')
+  root <- stats::uniroot(score,c(.Machine$double.eps,upper),tol=1e-12)$root/time_scale
+  if (!is.finite(root) || root <= 0) stop('The exponential MLE is not numerically representable.')
+  root
 }
 

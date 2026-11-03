@@ -2,79 +2,169 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.1, including its partition, allocation updates, and tail conventions.
+Version 0.4.0 implements Sections 2.2-2.5 and Algorithms 1-2 of the supplied
+manuscript *Self-Consistent Polya Trees for Arbitrarily Censored Survival Data*.
+The manuscript's uniform and exponential body centers are supported. Weibull
+body centering is retained as an explicit extension, using the same construction.
 
-## Finite PT partition
+## Body, tail and reference measure
 
-Every base starts with the root interval `[0, Inf]`; `support` must be `c(0, Inf)`. Let `T = largest_obs`, the largest finite endpoint in the first two columns of `X`, including right-censoring times and ignoring extra columns. `T` must be positive. For an ordinary node `(a,b]`, the split is the median of the base restricted to `[a, min(b,T)]`. Uniform splits are interval midpoints. For exponential and Weibull bases the split `s` satisfies
+Let `tau` be the largest finite endpoint in the first two input columns, including
+right-censoring times. The root is `[0, Inf]`. The body is `(0,tau]`; the tail is
+the single set `(tau,Inf)`. No distributional shape is specified inside the tail,
+for any centering family. This is not an atom at infinity or a parametric tail.
+
+`P0` is uniform, exponential or Weibull restricted and normalized to `(0,tau]`.
+Ordinary splits use its conditional median on each node's body portion. Its
+right child retains the true parent endpoint, including infinity. A node splits
+only when its depth is below `max_M` and its expected count under the reference
+measure is at least `min_count`. Even if pruned early, the rightmost leaf is
+always split at `tau`. There is exactly one tail leaf. The retained tree stays
+fixed during both optimization and sampling.
+
+The reference measure puts mass `1-s0` in the body according to `P0` and `s0`
+in the undivided tail. By default, equation (4) is used:
 
 \[
-F_0(s)=\frac{F_0(a)+F_0(\min(b,T))}{2}.
+s_0=\frac{\kappa\tau p_0(\tau)}{1+\kappa\tau p_0(\tau)}.
 \]
 
-The right child retains its parent's actual right endpoint, including `Inf`. Thus truncation determines the split locations without truncating the root support.
+`kappa=0.1`. Uniform centering gives `s0=1/11`. For exponential centering,
+`tau*p0(tau) = lambda*tau/expm1(lambda*tau)`. For the Weibull extension, with
+`h=(lambda*tau)^shape`, it is `shape*h/expm1(h)`. Computation uses log scale to
+avoid cancellation and overflow. If automatic calibration is too small to
+represent as a positive double, an explicit representable `s0` is required.
+This calibration does not set a finite upper endpoint or a tail density.
 
-Ordinary splitting ends at `max_M` or when the construction weight is below one. During fractional tree construction, an observation's current weight is passed to its compatible children in proportion to their branch probabilities: equally when both children overlap its interval, and entirely to the sole compatible child otherwise. No base probability is used for these construction weights. Consequently, terminal intervals can occur at different depths. Once these splits are complete, the rightmost terminal interval `(a, Inf)` is always split once more at `T`, into `(a,T]` and `(T,Inf)`. If its depth is `m`, these two children have depth `m+1`, and their branch prior is `Beta(alpha, alpha)` with `alpha = max(1, 0.5*(m+1)^2)`. This final split also applies when `max_M = 0` or the rightmost node stopped early. The tree is initialized once and does not grow again during EM.
+## Beta prior and initialization
 
-With fractional allocation, every branch initializes to `q_L = q_R = 1/2`, including the final tail split, so a depth-`d` leaf starts with mass `2^(-d)`. Initialization computes observation allocations under that complete tree but does not perform a count-based mass update. For children at depth `l`, the branch prior parameter is `alpha_l = max(1, l^2 / 2)` in both allocation modes and for all bases. Each EM M-step computes
+For children at depth `m`, let `r` be the reference left-child mass divided by
+its parent's reference mass. Equation (2) gives
+
+\[
+\alpha_L=\max(1,2\gamma m^2r),\qquad
+\alpha_R=\max(1,2\gamma m^2(1-r)).
+\]
+
+The default is `gamma=0.5`. Body-only median splits have `r=1/2` and recover
+the old symmetric `max(1,m^2/2)` parameters. Splits on the rightmost path are
+generally asymmetric, including the final body/tail split. `gamma=0` gives
+the flat prior on every branch.
+
+The initial measure is the reference measure itself: branches start at `r`,
+not necessarily one half or the floored Beta means. Initial expected counts
+use the reference probability of the intersection with an observation divided
+by the probability of that observation. These counts determine early stopping.
+They are not counts propagated by equal splitting of overlapping observations.
+
+Flooring a Beta parameter at one can change its mean. Accordingly `Prior$s0`
+is the reference tail target, while `Prior$tail_mean` is the actual induced
+prior mean, computed as the product of right-branch Beta means. They need not
+coincide, including on pruned trees. Both are exposed rather than silently
+calling the reference mass the exact prior mean.
+
+## Deterministic MAP-EM (Algorithm 1)
+
+For leaf `j` with current mass `p_j`, the coverage weight `h_ij` is the
+conditional body probability of observation `i` within that leaf. A tail leaf
+has weight one for every right-censored observation and zero for finite
+observations. For a censored observation,
+
+\[
+z_{ij}=\frac{p_jh_{ij}}{\sum_k p_kh_{ik}}.
+\]
+
+Exact observations have known labels. Their conditional density factors are
+constant in the branch probabilities, so the implementation uses the known
+label directly. Positive boundary events belong to the interval on the left;
+zero belongs to intervals beginning at zero.
+
+Leaf expected counts are summed over observations, then aggregated up the tree.
+Each M-step uses
 
 \[
 q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
-\frac{\alpha_l+n_L-1}{2\alpha_l+n_L+n_R-2},\qquad q_R=1-q_L,
+\frac{\alpha_L+N_L-1}{\alpha_L+\alpha_R+N_L+N_R-2}.
 \]
 
-where `epsilon = 1e-6`, with a one-half fallback when the denominator is too small. The same split-probability bounds apply to the final tail split and the overlap-count estimator (`allocated = 0`). Child masses are parent mass times these branch proportions; the bounds constrain conditional split probabilities, not the resulting node masses. This is a mode-style update with safeguards, not the usual posterior-mean formula `(alpha + n_L) / (2 * alpha + n_L + n_R)`.
+All prior parameters are at least one. If the denominator is zero, both
+posterior shapes equal one and `q_L=1/2` is used. `epsilon=1e-6` is configurable.
+Child masses are parent mass times conditional branch probabilities.
 
-## Conditional base distribution inside terminal intervals
+By default a flat-prior EM fit is run first and initializes the working-prior
+fit. Each stage stops when the Euclidean leaf-mass change is at most `EM_tol`
+(default `1e-6`), or after `max_EM_iter` updates (default 2000 per stage).
+`flat_init=FALSE` skips the first stage. `max_EM_iter=0` returns the reference
+measure and reference allocations without either optimization stage.
 
-Let `A = (a,b]` be a terminal interval, using `[0,b]` when `a = 0`, `p_A` its fitted mass, and `F_0`, `f_0`, `S_0` the base CDF, density, and survival function. For exponential and Weibull bases,
+`Convergence$flat` and `$map` return iteration counts, convergence flags, final
+changes and objective histories. The recorded log posterior kernels omit Beta
+normalization constants and exact-observation conditional-density constants;
+these are independent of the branch probabilities on the retained tree.
+Compare monotonicity within a stage, not across the two different priors.
+Final `Allocations` are recomputed from the returned masses.
 
-\[
-f_A(t)=\frac{f_0(t)\,1\{t\in A\}}{F_0(b)-F_0(a)},
-\qquad
-P(T\in(u,v)\mid T\in A)
-=\frac{F_0(\min(v,b))-F_0(\max(u,a))}{F_0(b)-F_0(a)},
-\]
+## Exact-target DA-Gibbs (Algorithm 2)
 
-where the probability is zero if the intersection is empty. For `a < t < b`,
+Starting from the deterministic fit, each sweep:
 
-\[
-S_A(t)=\frac{S_0(t)-S_0(b)}{S_0(a)-S_0(b)}.
-\]
+1. Samples each censored observation's leaf label from `z_ij`; exact labels stay fixed.
+2. Aggregates integer leaf counts through the retained tree.
+3. Samples each left branch independently from
+   `Beta(alpha_L + n_L, alpha_R + n_R)` and rebuilds node masses.
+4. Records leaf masses, branch probabilities, survival and body density.
 
-The fitted density and survival function mix these conditional distributions using `p_A`. Finite uniform leaves use their interval's uniform distribution. The uniform tail `(T,Inf)` instead holds a point mass `p_inf` at infinity: its density is zero at every finite time, and its contribution to survival is `p_inf` at every finite time. Consequently `S(t) = p_inf` for finite `t >= T`, and the continuous density integrates to `1-p_inf`. At `Inf`, the reported survival and density are zero. Right-censored intervals include this point mass, while finite observation intervals do not.
+Beta draws are unrestricted: the MAP epsilon clipping is not applied. The
+chain targets the posterior conditional on this tree and fixed base parameters.
+This is not an independent Beta approximation based on fractional MAP counts.
+No continuous event times are imputed.
 
-EM integrates these same terminal distributions when allocating an interval-censored observation to child nodes:
+Model fitting is deterministic and independent of target times. Prediction
+with `predict(fit,times,0.95)` runs DA-Gibbs by default during that call; use
+`posterior=FALSE` for deterministic predictions alone. The manuscript's setup is
+`n_sweeps=2000, burn_in=500, thin=1`, retaining 1500 sweeps. `set.seed()` controls
+R's random stream. Deterministic predictions remain in `Survival_Probs`;
+summaries and optional raw draws appear separately in the prediction's `Posterior`.
 
-\[
-w_{i,B}=\frac{P(T_i\in B\cap I_i)}{P(T_i\in I_i)}.
-\]
+`samplePT(fit)` exposes grid-independent tree draws. The ordinary prediction
+call samples these trees internally and evaluates them only at the supplied
+target times. Passing `samples=draws` explicitly reuses a previous chain without
+sampling again. Neither prediction nor sampling changes the input model,
+re-estimates base parameters, reruns EM or rebuilds the partition. Fitted state
+is stored as plain R arrays, so saved models and samples work in a fresh session.
 
-Exact observations are assigned directly by their event times. At a positive split point, including `T`, both allocation and density use the interval on the left; zero is included in intervals starting at zero. Density is zero at infinite evaluation times. Exponential and Weibull conditional probabilities use cumulative-hazard differences and `expm1`, so the new tail retains its conditional mass even when unconditioned survival at `T` underflows. Splits use `log1p` and `expm1` to preserve small truncated probabilities; ordinary splitting stops if no interior median is representable.
+Reported intervals are equal-tailed pointwise credible intervals. Approximate
+single-chain ESS uses the initial positive sequence of paired autocorrelations,
+with at most 1000 lags; MCSE is the sample SD divided by the square root of ESS.
+These summaries do not prove mixing. Inspect trace plots and compare independent
+chains when using inference substantively. Tree and base-parameter uncertainty
+are not integrated out.
 
-For `allocated = 1`, the same conditional-allocation rule is used initially and in every E-step. If leaf `A_j` has current mass `p_j` and conditional observation probability `h_ij`, its weight for observation `i` is `p_j * h_ij / sum_k(p_k * h_ik)`. Initial masses are products of one-half branch probabilities; subsequent E-steps use the preceding M-step's masses. Base probabilities are evaluated only inside terminal intervals. An internal node's weight sums those of its descendant leaves. These completed-tree initial counts replace the provisional construction weights, without changing the partition or its equal initial branch probabilities.
+## Evaluation and implementation
 
-For the uniform tail `(T,Inf)`, `h_ij` is one for every right-censored observation and zero for every finite observation. All finite observation endpoints are at most `T`, so this rule requires no uniform distribution truncated to an infinite interval. A right-censored observation at `L` contributes `p_tail / S(L)` to the tail; it need not be allocated entirely there. Finite uniform leaves use overlap length divided by leaf width. Exponential and Weibull leaves use their conditional base probabilities. The separate `allocated = 0` option retains overlap-count initialization, its mode update and no EM; uniform right-censored observations are entirely assigned to its tail.
+On `[0,tau]`, survival and density are mixtures of the same conditional leaf
+distributions used in allocation. `S(tau)` equals `Tail_Prob`; body density
+integrates to `1-Tail_Prob`. At times above `tau`, including `Inf`, both outputs
+are `NA`, since the tail shape has not been supplied. Full mean event time is
+therefore not identified by this model. Posterior means refer to means of
+survival probabilities, densities, leaf masses or tail mass across draws.
 
-During EM, the partition, observation intervals and base parameters stay fixed. The implementation caches observation/leaf conditional probabilities and child links, and computes each observation's denominator once per iteration. A node's numerator sums its descendant leaves in the original `terminal_nodes` order. Observation accumulation, branch updates and the convergence calculation retain their original order; no child-total regrouping or prefix-sum subtraction is used. The additional dense probability cache is limited to 64 MiB per fit; larger problems and degenerate numerical partitions use the uncached allocation calculation.
+Coverage probabilities and allocation normalization use log scale. Exact
+labels are handled separately. Expected/integer counts are aggregated once
+up the tree, so the allocation work is `O(n * number_of_leaves)` per sweep.
+Coverage and prediction caches each have a 64 MiB cap, with uncached fallbacks.
+Raw native sample matrices are limited to 512 MiB before R summary overhead.
 
-## Truncation and tail conventions
-
-1. **Tree truncation:** stopping ordinary recursive partitioning at a finite depth or low initial count, followed by the mandatory tail split.
-2. **Split distribution truncation:** restricting the base to the node's intersection with `[0,T]` to select its ordinary median split.
-3. **Conditional terminal distribution:** restricting and renormalizing the base inside a finite leaf or an exponential/Weibull tail; the uniform tail is instead an atom at infinity.
-
-There is no finite tail cutoff. The exponential tail has distribution `largest_obs + Exp(lambda)`, while the Weibull tail follows the original Weibull law conditional on exceeding `largest_obs`. None of these operations implements delayed entry or a likelihood for sampling-truncated data.
-
-## Implementation map
+`allocated=0` retains the separate historical overlap-count estimator, using
+the revised reference tree and Beta prior. It has no EM or posterior sampling;
+it is not Algorithm 1 and is not a faster setting for the same estimator.
 
 | Source | Responsibility |
 | --- | --- |
-| `R/PT.R` | Input wrapper, defaults, result names, conversion of terminal indices to R indexing |
-| `src/PT.cpp` | PT tree, initialization, EM, shared conditional-base probabilities, output |
-| `R/MLE_estimate.R` | Parametric likelihoods, gradients, and optimization |
-| `R/data_example.R` | Simulation generators |
-| `tests/pt-conditional-base.R` | Conditional allocation, output, mass, and tail regression checks |
-| `tests/pt-tree-structure.R` | Truncated-median partitions, final tail layer, Beta parameters, and numerical tail checks |
-
-`survPT()` provides point estimates. It does not return posterior samples, credible intervals, automatic tuning selection, or proof of convergence.
+| `R/PT.R` | Fit-only S3 model, validation and rate selection |
+| `R/predict.R` | Target-time prediction, sampling orchestration and posterior summaries |
+| `R/sample.R` | Standalone posterior sampling from a stored model |
+| `src/PT.cpp` | Reference tree, asymmetric priors, MAP-EM, DA-Gibbs, prediction |
+| `R/MLE_estimate.R` | Parametric fits; exponential score solved without a rate floor |
+| `tests/scpt.R` | Reference/count checks, MAP ascent, analytic and quadrature posterior checks |
+| `tests/interfaces.R` | Fresh prediction sampling, time ordering, reusable draws, serialization and unchanged model state |

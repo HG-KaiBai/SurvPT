@@ -3,58 +3,50 @@
 \name{SurvPT-native}
 \alias{SurvPT-native}
 \alias{SurvPT}
-\title{Low-level native finite Polya tree interface}
+\title{Low-level native self-consistent Polya tree interface}
 \usage{
-SurvPT(X, test_seq, prior, support, max_M, prior_params, allocated,
-  max_EM_iter, EM_tol, verbose)
+SurvPT(X, prior, max_M, prior_params, allocated,
+  max_EM_iter, EM_tol, verbose, gamma = 0.5, kappa = 0.1, s0 = -1,
+  min_count = 1, split_epsilon = 1e-6, flat_init = TRUE)
 }
 \arguments{
-\item{X}{Numeric matrix with left and right endpoints in its first two
-columns; see \code{\link{survPT}()} for supported observation encodings.}
+\item{X}{Numeric matrix with left and right endpoints in the first two columns.}
 
-\item{test_seq}{Numeric evaluation points.}
+\item{prior}{Body family: uniform (1), exponential (2), or Weibull (3).}
 
-\item{prior}{Integer base selector: \code{1} uniform, \code{2} exponential, \code{3} Weibull.}
+\item{max_M}{Maximum ordinary depth, from 0 to 30.}
 
-\item{support}{Must be \code{c(0, Inf)} for every base distribution.}
+\item{prior_params}{Exponential rate or Weibull \code{c(rate, shape)}; use
+\code{numeric()} for uniform. Automatic MLE fitting is wrapper-only.}
 
-\item{max_M}{Nonnegative integer maximum ordinary tree depth, before the
-additional split of the rightmost interval at the largest finite endpoint.}
+\item{allocated}{MAP-EM (1) or historical overlap counts (0).}
 
-\item{prior_params}{Numeric base parameters: one rate for exponential,
-\code{c(lambda, k)} for Weibull, or an ignored numeric placeholder for uniform.}
+\item{max_EM_iter}{Maximum iterations per EM stage.}
 
-\item{allocated}{\code{1} for EM allocation or \code{0} for overlap counts without EM.
-EM initialization uses equal conditional branch probabilities and allocates
-observations through the complete terminal mixture. In the overlap-count
-mode only, uniform right-censored observations start entirely in the tail.}
+\item{EM_tol}{Leaf-mass change tolerance.}
 
-\item{max_EM_iter}{Nonnegative integer maximum number of EM updates.}
+\item{verbose}{Print progress.}
 
-\item{EM_tol}{Nonnegative tolerance for terminal-mass changes.}
+\item{gamma}{Nonnegative Beta-prior strength.}
 
-\item{verbose}{Logical progress-output flag.}
+\item{kappa}{Positive boundary-density calibration factor.}
+
+\item{s0}{Reference tail mass; \code{-1} requests automatic calibration.}
+
+\item{min_count}{Reference-count threshold for splitting.}
+
+\item{split_epsilon}{MAP-only branch probability bound.}
+
+\item{flat_init}{Fit a flat-prior initialization before the working prior.}
 }
 \value{
-A list with native names: \code{left_bound}, \code{right_bound}, \code{node_levels},
-\code{alpha}, \code{n_obs_allocated}, \code{posterior_probs}, \code{terminal_nodes},
-\code{survival_probs}, and \code{density_probs}. The \code{alpha} component contains
-branch prior parameters. Native \code{terminal_nodes} indices are \strong{zero-based};
-add one before using them to index R arrays. Other components correspond
-to those documented for \code{\link{survPT}()}.
+Native node arrays and diagnostics. All node indices are zero-based;
+absent links are \code{-1}. \code{alpha} stores each child's prior parameter.
+\code{model_state} stores the fitted state for prediction and sampling.
+Support is fixed at \verb{[0, Inf]}. See \code{\link{survPT}()} for interpretation.
 }
 \description{
-Direct Rcpp entry point for the PT implementation. Most users should call
-\code{\link{survPT}()}, which validates some inputs, provides defaults, and converts
-terminal-node indices to R indexing. This interface is retained for
-compatibility and requires all arguments explicitly.
-}
-\details{
-Pass a numeric matrix as \code{X} and numeric vectors for vector arguments.
-For a uniform base, pass a numeric placeholder such as \code{c(0.12, 1)} for
-\code{prior_params}; it is ignored. The wrapper's input validation is bypassed.
-Use the endpoint, support, and parameter conventions in \code{\link{survPT}()}.
-}
-\seealso{
-\code{\link{survPT}()}
+Native entry point for the retained tree and deterministic MAP-EM fit.
+Prefer \code{\link{survPT}()} for validation, automatic rate estimation,
+one-based indices and a serializable S3 model.
 }

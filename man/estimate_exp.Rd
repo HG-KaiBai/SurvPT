@@ -18,15 +18,14 @@ A length-one numeric vector containing the estimated rate. Its
 reciprocal is the exponential mean.
 }
 \description{
-Minimize the negative log-likelihood with an analytic gradient using
-\code{stats::optim()} and the \code{L-BFGS-B} method.
+Solve the monotone likelihood score on a rescaled time axis.
 }
 \details{
-The starting rate is \code{0.01} and the lower bound is \code{0.001}.
-The result can be passed to \code{\link{survPT}()} with \code{prior = 2}. Only the
-optimizer's parameter estimate is returned; convergence status, standard
-errors, and objective values are not exposed. A returned value alone does
-not establish convergence or identifiability.
+Uses stable exponential differences and no artificial lower bound
+on the rate. An error is raised when a finite positive MLE does not exist,
+including all-right-censored data. Supply explicit \code{prior_params} to
+\code{\link{survPT}()} in that case. This estimate is held fixed during
+tree fitting and sampling; uncertainty in it is not propagated.
 }
 \examples{
 d <- data_rc(seed = 123, n = 30, K = 1, Lambda = 0.4, q = 0.3)
