@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.2.2.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.2.3.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.2.2.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.2.3.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```

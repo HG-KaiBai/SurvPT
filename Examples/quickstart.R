@@ -1,4 +1,4 @@
-# SurvPT 0.2.2: small, reproducible examples using only installed dependencies.
+# SurvPT 0.2.3: small, reproducible examples using only installed dependencies.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)

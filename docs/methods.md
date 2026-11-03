@@ -2,7 +2,7 @@
 
 [Back to README](../README.md)
 
-This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.2, including its partition, allocation updates, and tail conventions.
+This document describes the finite Polya tree estimator implemented by `survPT()` in version 0.2.3, including its partition, allocation updates, and tail conventions.
 
 ## Finite PT partition
 

@@ -5,7 +5,7 @@
 [![Views](https://view-counter.tobyhagan.com/?user=USERNAME/REPO&base=555555&accent=181717&text=white&flat=true)](https://github.com/HG-KaiBai/SurvPT)
   
 
-SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.2**.
+SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates a univariate survival function and density from censored observations using finite Polya trees. The current package version is **0.2.3**.
 
 The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) under the [MIT license](LICENSE.md).
 
@@ -74,6 +74,8 @@ fit_spliced <- survPT(x, prior = 4, prior_params = rate,
 The base retains exponential survival `exp(-rate * M)` at the splice point `M`; its CDF is linear between zero and `M`. See [Methods](docs/methods.md#uniform-body-with-exponential-tail) for the full definition.
 
 A runnable example covering all four PT bases is in [Examples/quickstart.R](Examples/quickstart.R). Simulation and data-analysis scripts, their dependencies, and validation commands are described in [Examples/README.md](Examples/README.md).
+
+[Examples/posterior.R](Examples/posterior.R) compares PT posterior intervals with the MPT and TBP models from `spBayesSurv`, prints summary tables, and displays a faceted `ggplot2` figure in interactive R without saving files.
 
 ## Documentation
 

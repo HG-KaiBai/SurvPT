@@ -2,10 +2,13 @@
 
 Start with [`quickstart.R`](quickstart.R). It uses synthetic data, fits `survPT()` with uniform, exponential, Weibull, and spliced uniform-exponential bases, checks basic probability properties, and does not write files.
 
+For posterior intervals, run `source("Examples/posterior.R")` in an interactive R session after installing SurvPT 0.2.3, `spBayesSurv` 1.1.9, `survival`, and `ggplot2`. The example compares three PT bases with the MPT and TBP models from `spBayesSurv` on the same simulated data and time grid. Main chains retain 5,000 draws after 3,000 burn-in sweeps. It prints selected-time intervals and width summaries, and displays a faceted ggplot with credible ribbons and simulated truth. Full results remain in `posterior_intervals`, with the plot in `posterior_plot`; no result or image files are saved. Noninteractive runs leave the plot in memory without opening a graphics device.
+
 The research scripts below support simulation and data-analysis work. Some execute experiments when sourced, use local interactive state, or write results into the working directory. Review their settings and dependencies before running them.
 
 | File | Purpose | Requirements and execution notes |
 | --- | --- | --- |
+| `posterior.R` | PT, MPT, and TBP posterior survival interval comparison | SurvPT >= 0.2.3, `spBayesSurv` 1.1.9, `survival`, `ggplot2`; reuses the initialization adaptation from `test_function.R`; prints tables and an interactive ggplot, writes no result files |
 | `test_function.R` | Historical estimator comparison and plotting | `devtools`, `interval`; calls `View()` and refers to `fid` although its construction is commented out |
 | `Simulation.R` | Repeated comparisons with parametric fits and interval-censoring NPMLE | `survival`, `interval`, `parallel`; launches loops immediately, requests 300 workers, writes CSV files under `n*` |
 | `Simulation_CI.R` | Bootstrap survival-coverage experiments at selected quantile times | `devtools`, `interval`, `parallel`, `boot`, `bootstrap.R`; launches large nested experiments and writes `CI_n*` output |
