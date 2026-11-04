@@ -12,8 +12,9 @@ body centering is retained as an explicit extension, using the same construction
 
 Let `tau` be the largest finite endpoint in the first two input columns, including
 right-censoring times. The root is `[0, Inf]`. The body is `(0,tau]`; the tail is
-the single set `(tau,Inf)`. No distributional shape is specified inside the tail,
-for any centering family. This is not an atom at infinity or a parametric tail.
+the single set `(tau,Inf)`. During fitting and Gibbs allocation, no distributional
+shape is specified inside the tail, for any centering family. Prediction alone
+adds an exponential extrapolation matched to each fitted or sampled tail mass.
 
 `P0` is uniform, exponential or Weibull restricted and normalized to `(0,tau]`.
 Ordinary splits use its conditional median on each node's body portion. Its
@@ -151,10 +152,29 @@ are not integrated out.
 
 On `[0,tau]`, survival and density are mixtures of the same conditional leaf
 distributions used in allocation. `S(tau)` equals `Tail_Prob`; body density
-integrates to `1-Tail_Prob`. At times above `tau`, including `Inf`, both outputs
-are `NA`, since the tail shape has not been supplied. Full mean event time is
-therefore not identified by this model. Posterior means refer to means of
-survival probabilities, densities, leaf masses or tail mass across draws.
+integrates to `1-Tail_Prob`. For prediction above `tau`, let `p` denote the
+fitted tail mass or one Gibbs draw's tail mass. Impose the additional matching
+condition `exp(-lambda*tau)=p`, which gives `lambda=-log(p)/tau`. The output is
+
+\[
+S(x)=p\exp\{-\lambda(x-\tau)\}=p^{x/\tau},\qquad
+f(x)=\lambda S(x),\quad x>\tau.
+\]
+
+The tail density integrates to `p`; survival is continuous at `tau`. Density
+uses the body endpoint convention at `tau` and need not be continuous there.
+At `Inf`, survival and density are zero. Zero mass gives a zero contribution;
+mass exactly one cannot yield a positive matching rate and raises an error
+during extrapolation. Computation uses log scale for tiny masses and distant times.
+
+Each posterior draw uses its own `p` and `lambda` before quantiles and moments
+are calculated. This is not extrapolation of posterior summary columns with a
+single fitted rate. The shape is an output assumption, not part of the fitting
+likelihood or Gibbs allocation. A normalized truncated exponential alone would
+not identify a rate; the matching condition above supplies that extra assumption.
+Full mean event time is not identified by the fit without a tail-shape assumption.
+Posterior means reported by prediction are means of survival probabilities or
+densities, not mean event times.
 
 Coverage probabilities and allocation normalization use log scale. Exact
 labels are handled separately. Expected/integer counts are aggregated once
@@ -172,4 +192,4 @@ it is not Algorithm 1 and is not a faster setting for the same estimator.
 | `R/predict.R` | Target-time prediction, sampling orchestration and posterior summaries |
 | `src/PT.cpp` | Reference tree, asymmetric priors, MAP-EM, DA-Gibbs, prediction |
 | `R/MLE_estimate.R` | Parametric fits; exponential score solved without a rate floor |
-| `tests/fit-predict.R` | Reference/count checks, one-stage MAP, analytic and quadrature posteriors, tail output, thinning, time ordering and serialization |
+| `tests/pt-exponential-tail.R` | Prediction-only exponential extension, per-draw rates, density normalization and boundary behavior |

@@ -28,8 +28,10 @@ attr(post,"tail")
 ```
 
 `flat=TRUE` selects Beta(1,1) throughout fitting and posterior sampling.
-There is one EM fit starting at the centering distribution. Curves above `Tau`
-are undefined; tail probability is returned separately. `samplePT()` is removed.
+There is one EM fit starting at the centering distribution. Above `Tau`,
+prediction adds an exponential tail: mass `p` gives rate `-log(p)/Tau` and
+survival `p^(x/Tau)`. Each posterior draw uses its own mass and rate. Tail
+probability is also returned separately. `samplePT()` is removed.
 Prediction returns summaries without raw draws. At child level `m`, the default
 MAP probability bound is `1e-6 * 2^(-m)`; posterior draws are unrestricted.
 
@@ -37,7 +39,8 @@ MAP probability bound is `1e-6 * 2^(-m)`; posterior draws are unrestricted.
 
 - `quickstart.R` fits all three body families, demonstrates flat-prior fitting,
   checks probability properties, and prints tail estimates and posterior intervals.
-  Objects: `fits`, `predictions`, `flat_fit`, `checks`, `tail_probabilities`.
+  Objects: `fits`, `predictions`, `flat_fit`, `checks`, `tail_probabilities`,
+  `tail_predictions` (including extrapolation beyond `Tau` and at `Inf`).
 - `posterior.R` follows the 0.2.3 comparison of PT, spBayesSurv MPT and TBP.
   Requires `survival`, `spBayesSurv` 1.1.9 and `ggplot2`. The PT families are
   uniform, exponential and Weibull; all use the unspecified 0.4.0 tail. Editable
@@ -75,15 +78,15 @@ for a pilot run. Windows uses one worker; other platforms default to two.
 Simulation scripts require `interval` and `parallel`; bootstrap studies also
 require `boot`, and fiducial comparisons require `pracma` and `quadprog`.
 Bootstrap resamples can have a smaller `Tau`; predictions beyond that resample's
-observed range remain undefined. Do not silently extrapolate or drop missing
-draws when interpreting coverage.
+observed range use its own endpoint and tail mass for exponential extrapolation.
+Coverage results at such times therefore depend on the exponential-tail assumption.
 
 ## Validation
 
 After loading the current package:
 
 ```r
-source("tests/fit-predict.R")
+source("tests/pt-exponential-tail.R")
 source("Examples/quickstart.R")
 source("Examples/posterior.R")
 ```

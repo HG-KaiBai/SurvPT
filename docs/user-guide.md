@@ -33,8 +33,11 @@ censored-data MLE once. All-right-censored data require an explicit rate.
 For Weibull centering, use `prior=3, prior_params=c(rate,shape)` with scale `1/rate`.
 
 Every family uses `[0,Inf]`, a body ending at the largest finite endpoint `Tau`,
-and one unspecified tail. Predictions above `Tau`, including `Inf`, are `NA`.
-Tail mass does not imply a cure fraction or a parametric tail shape.
+and one tail whose shape is unspecified during fitting. Prediction extends
+above `Tau` with an exponential shape: for tail mass `p`, the rate is
+`-log(p)/Tau`, giving `S(x)=p^(x/Tau)` and `f(x)=(-log(p)/Tau)*S(x)`.
+At `Inf` both curves are zero. This is an output assumption, not a fitted cure
+fraction or an estimate of the tail shape from observed tail event times.
 
 ## Select the prior
 
@@ -73,6 +76,8 @@ pred <- predict(fit,x,level=0.95,n_samples=2000,burn_in=3000,thin=1)
 head(pred)                     # x, estimate, lower, upper, mean, median
 attr(pred,"tail")              # same columns, for S(Tau)
 density <- predict(fit,x,type="density",sample=FALSE)
+tail_curve <- predict(fit,c(fit$Tau,2*fit$Tau,Inf),sample=FALSE)
+# estimates: fit$Tail_Prob, fit$Tail_Prob^2, 0
 ```
 
 The prediction interface follows 0.2.3. `estimate` is the fitted MAP-EM plug-in
@@ -80,6 +85,12 @@ curve. `mean` and `median` summarize its posterior; they are not mean or median
 event times. `lower` and `upper` are pointwise equal-tailed credible limits.
 For density predictions, the separate `tail` attribute still reports a probability.
 It is available even when the target grid omits `Tau`, or when `x=numeric()`.
+Each posterior draw uses its own tail mass and corresponding exponential rate
+before the curve summaries are computed. In particular, posterior mean survival
+at `2*Tau` is the mean of squared tail masses, not the square of their mean.
+The extrapolated density integrates to the same fitted or sampled tail mass.
+Survival is continuous at `Tau`; density retains the body value there and may
+jump to the exponential tail density immediately afterwards.
 
 The defaults use `n_samples=2000` draws after `burn_in=3000` sweeps, with
 `thin=1`. The total is `burn_in+n_samples*thin`; the first retained sweep is

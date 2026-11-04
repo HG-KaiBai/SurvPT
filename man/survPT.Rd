@@ -114,8 +114,11 @@ the clipped Beta mode with fractional expected counts. The initial reference
 distribution is distinct from the actual Beta-prior mean when the lower
 bound of one on a Beta parameter is active. Both tail quantities are returned.
 
-The tail shape is never extrapolated. \code{Tail_Prob} is the MAP estimate of
-\code{S(tau)}. Unrestricted mean event time is not determined by this model.
+Fitting leaves the tail shape unspecified. \code{Tail_Prob} is the MAP estimate
+of \code{S(tau)}. Prediction adds an exponential tail whose rate is determined
+by this mass, or by each posterior draw's tail mass; see
+\code{\link{predict.survPT}()}. Unrestricted mean event time is not identified
+by the fit without such an extrapolation assumption.
 Exact events at a split belong to its left interval; zero is included in
 intervals starting at zero. \code{Posterior_Probs} remains the historical name
 for deterministic MAP node masses, not posterior mean masses.

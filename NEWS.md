@@ -15,7 +15,11 @@
   `split_epsilon * 2^(-m)` (base scale `1e-6`) and the upper bound is one minus
   that value, including the final tail split. Gibbs draws remain unrestricted.
 - Posterior retention uses `burn_in + n_samples*thin` sweeps and keeps exactly
-  `n_samples` draws. Predictions beyond `Tau` remain `NA`.
+  `n_samples` draws. Predictions beyond `Tau` use an exponential tail matched
+  to the fitted or individual sampled tail mass `p`: rate `-log(p)/Tau` and
+  survival `p^(x/Tau)`. Density is extended consistently and both curves are
+  zero at `Inf`. This prediction-only assumption leaves fitting and Gibbs
+  allocation unchanged; `attr(prediction, "tail")` still summarizes `S(Tau)`.
 - Updates examples to the 0.2.3 workflow; all results and plots stay in the R
   session. No CSV, RData or image files are automatically saved.
 - Adds regression checks for centering initialization, one-stage EM, flat-prior

@@ -22,8 +22,9 @@ requested times, with a separate tail probability summary.
 
 SurvPT is distributed under the MIT license. It provides deterministic
 MAP-EM fits and optional DA-Gibbs posterior means and pointwise credible
-intervals. The tail is represented only by its probability mass for every
-body centering family; predictions beyond the observed range are undefined.
+intervals. Fitting represents the tail only by its probability mass for
+every body centering family. Prediction adds an exponential tail beyond
+the observed range, matching each fitted or sampled tail probability.
 }
 \seealso{
 \code{\link{survPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()},

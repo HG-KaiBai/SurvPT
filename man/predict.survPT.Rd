@@ -50,8 +50,9 @@ compute summaries and are not retained in the returned object.
 }
 \description{
 Evaluate the fitted MAP-EM distribution and optionally sample its posterior
-at specified times. The interface follows version 0.2.3, with a separate
-tail probability summary for the unspecified tail in version 0.4.0.
+at specified times. Beyond the largest finite endpoint, prediction adds an
+exponential tail with the fitted or sampled tail mass. Fitting and sampling
+of the tree continue to use an unspecified tail shape.
 }
 \details{
 \code{estimate} is the fitted MAP-EM plug-in prediction. It is not the mode of the
@@ -76,10 +77,22 @@ Intervals are equal-tailed and pointwise, conditional on the retained tree
 and fixed centering parameters. Finite chains have Monte Carlo error;
 compare summaries across independent runs and longer chains to assess stability.
 
-At times above \code{object$Tau}, including \code{Inf}, curve estimates and posterior
-summaries are \code{NA}: the model specifies only total tail probability, with
-no shape inside the tail. \code{attr(result, "tail")} always reports this
-probability \code{S(Tau)}, even when \code{x} omits \code{Tau} or \code{type="density"}.
+For \code{x > Tau}, let \code{p} be the fitted tail mass (or the tail mass of an
+individual posterior draw). Prediction chooses the exponential rate by
+requiring \code{exp(-rate * Tau) = p}, so \code{rate = -log(p)/Tau}. It evaluates
+\code{S(x) = p * exp(-rate * (x-Tau)) = p^(x/Tau)} and
+\code{f(x) = rate * S(x)}. Each posterior draw uses its own mass and rate before
+summaries are computed. Tail density integrates to \code{p}, and survival joins
+continuously at \code{Tau}; density need not be continuous there. At \code{Tau},
+density retains the body endpoint convention. At \code{Inf}, both curves are zero.
+
+This tail shape is an extrapolation assumption used only for prediction;
+it does not alter allocation, the tree, prior parameters or Gibbs sampling.
+The tail rate is determined by mass matching, not separately estimated from
+tail event times. A zero tail mass contributes zero. A tail mass of exactly
+one cannot determine a positive exponential rate and raises an error when
+extrapolating. \code{attr(result, "tail")} reports \code{S(Tau)} and its posterior
+summaries, even when \code{x} omits \code{Tau} or \code{type="density"}.
 }
 \examples{
 d <- data.frame(L=c(0,1,2,3), R=c(1,2,Inf,Inf))
@@ -88,7 +101,7 @@ set.seed(42)
 p <- predict(fit, c(0,0.5,1,2,3), n_samples=200, burn_in=50)
 p
 attr(p, "tail")
-predict(fit, c(1,2), sample=FALSE)
+predict(fit, c(fit$Tau, fit$Tau+1, Inf), sample=FALSE)
 }
 \seealso{
 \code{\link{survPT}()}

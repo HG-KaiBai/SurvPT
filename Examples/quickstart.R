@@ -40,6 +40,15 @@ tail_probabilities <- do.call(rbind, lapply(names(predictions), function(name) {
 print(tail_probabilities, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
 cat("Every base estimates tail mass only; survival at tau equals that mass.\n")
+tail_predictions <- lapply(fits, function(fit) {
+  predict(fit, c(fit$Tau, 1.5*fit$Tau, 2*fit$Tau, Inf), sample=FALSE)
+})
+for (name in names(fits)) {
+  fit <- fits[[name]]
+  stopifnot(max(abs(tail_predictions[[name]]$estimate -
+                    c(fit$Tail_Prob,fit$Tail_Prob^1.5,fit$Tail_Prob^2,0))) < 1e-10)
+}
+print(tail_predictions)
 
 # Optional plotting in an interactive R session:
 if (interactive()) {

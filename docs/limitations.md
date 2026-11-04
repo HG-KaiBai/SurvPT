@@ -4,12 +4,13 @@
 
 ## Interpretation
 
-- All families leave the tail shape unspecified. Only its mass `S(tau)` is
-  estimated; survival and density above `tau` return `NA`. Full mean event time
-  and extrapolated quantiles are not identified by this implementation.
+- Fitting estimates only tail mass `S(tau)`. Prediction adds an exponential
+  shape with rate `-log(p)/tau` for each fitted or sampled mass `p`. Outputs
+  beyond `tau` depend on this assumption; the data do not identify the tail
+  shape. Rate uncertainty is induced by the mass draws, not separately sampled.
 - DA-Gibbs targets the posterior on the retained tree with fixed base
   parameters. It does not integrate over tree selection or uncertainty in an
-  estimated exponential rate. The Weibull body center is a software extension
+  estimated body-centering rate. The Weibull body center is a software extension
   of the manuscript's uniform/exponential choices.
 - Reported credible intervals are pointwise, not simultaneous bands. Finite
   Gibbs runs have Monte Carlo error; compare independent runs and longer chains.
@@ -33,6 +34,8 @@ initialization and tails. Old numerical results are not expected to be reproduce
 It preserves deterministic result names and provides posterior summaries
 separately. Exponential and Weibull no longer extrapolate a parametric tail;
 uniform no longer treats the tail as an atom at infinity.
+Version 0.4.1 adds a prediction-only exponential tail matched to the fitted or
+sampled mass, while retaining the unspecified tail in fitting.
 
 Version 0.3.2 makes `survPT()` exclusively fit-only. Use
 `predict(fit,times,level)` for curves and uncertainty: it runs sampling during
@@ -51,9 +54,10 @@ is maximized at infinite rate, require an explicit positive `prior_params` when
 using exponential centering. The automatic estimator no longer uses an arbitrary
 rate floor of 0.001.
 
-**Missing predictions beyond the data:** use a grid within `[0,fit$Tau]` and read
-the separate `fit$Tail_Prob`. These missing values implement the unspecified-tail
-model rather than a numerical failure.
+**Predictions beyond the data:** exponential extrapolation preserves the fitted
+or sampled tail mass. For `x>tau`, it uses `S(x)=p^(x/tau)`. Survival and density
+at `Inf` are zero; `attr(prediction,"tail")` still reports `S(tau)`. A mass of
+exactly one cannot determine a positive matching rate and raises an error.
 
 **Slow or large runs:** lower tree depth, raise `min_count`, reduce grid size, or
 use fewer draws. Prediction returns summaries only, but temporarily stores
@@ -74,6 +78,6 @@ Build dependencies are described in [Installation](installation.md).
   it returns only parameters and requires separate diagnostic assessment.
 - Several scripts launch large experiments. Start from `Examples/quickstart.R`
   and `Examples/posterior.R`. Results stay in R; plots display interactively.
-  Research scripts must use grids within each fit's `tau`.
+  Grid points beyond each fit's `tau` use the exponential extrapolation.
 
-Run `tests/fit-predict.R` for numerical and interface checks.
+Run `tests/pt-exponential-tail.R` for tail prediction checks.

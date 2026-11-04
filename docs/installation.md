@@ -81,8 +81,9 @@ Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Ex
 Version 0.4.1 uses reference-count pruning, asymmetric tail-path Beta priors,
 centering-based initialization followed by a single MAP-EM fit, and optional
 DA-Gibbs. `flat=TRUE` selects Beta(1,1) for the entire fit and sampler. All families
-now leave the tail shape unspecified and return `NA` beyond the largest finite
-endpoint. Deterministic and posterior predictions are returned by `predict()`.
+leave the tail shape unspecified during fitting. Prediction extends beyond
+the largest finite endpoint with an exponential shape matched to the fitted
+or individual sampled tail mass. Curves and summaries are returned by `predict()`.
 `survPT()` accepts only fitting parameters; use
 `predict(fit,times,0.95)` to sample and predict at target times. Refit earlier analyses when adopting these changes;
 see [Methods](methods.md) and [NEWS](../NEWS.md).

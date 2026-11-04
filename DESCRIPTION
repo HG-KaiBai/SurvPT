@@ -17,7 +17,8 @@ Description: Estimates survival functions from interval-censored observations
     using finite Polya trees with uniform, exponential or Weibull conditional
     body centering distributions and an unspecified tail. Provides deterministic
     maximum a posteriori EM fits and data-augmentation Gibbs sampling for
-    posterior means and pointwise credible intervals.
+    posterior means and pointwise credible intervals. Prediction uses
+    exponential tail extrapolation matched to fitted or sampled tail mass.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
