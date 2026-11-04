@@ -2,162 +2,116 @@
 
 [Back to README](../README.md)
 
-## Encode observations
+## Encode observations and fit
 
-Supply `L,R` as the first two columns of a matrix or data frame. Exact events
-use `L=R`, interval censoring uses finite `L<R`, right censoring uses `R=Inf`,
-and left censoring uses `L=0`. The same encoding covers current status. Require
-finite nonnegative left endpoints, ordered endpoints, no missing values, and
-at least one positive finite endpoint. Extra columns are ignored.
+Supply `L,R` as the first two columns of a numeric matrix or data frame. Exact
+events use `L=R`, interval censoring uses finite `L<R`, right censoring uses
+`R=Inf`, and left censoring uses `L=0`. Require finite nonnegative left endpoints,
+ordered endpoints, no missing values, and a positive finite endpoint.
 
 ```r
 library(SurvPT)
 dat <- data.frame(L=c(0,0.4,1.1,2,3), R=c(0.8,0.4,2,Inf,Inf))
-```
-
-## Fit the deterministic estimator
-
-```r
 fit <- survPT(dat, prior=2, max_M=8, verbose=FALSE)
-fit$Prior$parameters  # exponential MLE, computed once before fitting
-fit$Convergence$map[c("iterations", "converged", "difference")]
-fit$Tail_Prob         # S(tau), with tau = largest finite endpoint
-x <- seq(0,fit$Tau,length.out=101)  # numeric vector of target times t
-pred <- predict(fit,x,posterior=FALSE)
-plot(pred$Test_seq,as.numeric(pred$Survival_Probs),type="l",ylim=c(0,1))
+fit$Prior$parameters
+fit$Convergence$map
+fit$Tail_Prob
+x <- seq(0,fit$Tau,length.out=101)
+pred <- predict(fit,x,sample=FALSE)
+pred                        # x and estimate
+attr(pred,"tail")           # x = Tau; estimate = fitted S(Tau)
+if (interactive()) plot(pred$x,pred$estimate,type="l",ylim=c(0,1))
 ```
 
-`survPT()` fits only: it does not evaluate a grid or run a
-sampler. It returns an S3 model with the retained partition, prior, fitted node
-masses, training intervals and convergence information. Prediction and sampling
-reuse this state without rebuilding the tree or running EM again.
+`survPT()` returns a serializable fitted model without evaluating a grid or
+sampling. `predict.survPT()` handles both estimation and posterior sampling.
+There is no standalone `samplePT()` interface.
 
-Use `prior=1` for uniform body centering; no parameters are required. For
-`prior=2`, supply a positive rate via `prior_params` or leave it `NULL` for the
-censored-data exponential MLE. All-right-censored samples do not have a finite
-positive exponential MLE and require a supplied rate. `prior=3` retains Weibull
-body centering with explicit `prior_params=c(rate,shape)` and scale `1/rate`.
-Weibull is an extension of the supplied manuscript.
+Use `prior=1` for uniform body centering. For `prior=2`, supply a positive
+exponential rate via `prior_params`, or leave it `NULL` to estimate the
+censored-data MLE once. All-right-censored data require an explicit rate.
+For Weibull centering, use `prior=3, prior_params=c(rate,shape)` with scale `1/rate`.
 
-Every family uses root support `c(0,Inf)`, a body ending at `tau`, and one
-unspecified tail. Predictions above `tau` are `NA`. Use a grid within `[0,tau]`
-or the default 200-point grid when `predict()` is called without times. No cure fraction or parametric extrapolation is
-implied by the tail mass.
+Every family uses `[0,Inf]`, a body ending at the largest finite endpoint `Tau`,
+and one unspecified tail. Predictions above `Tau`, including `Inf`, are `NA`.
+Tail mass does not imply a cure fraction or a parametric tail shape.
 
-## Control the reference prior
+## Select the prior
 
 ```r
-custom <- survPT(dat, prior=1, s0=0.15, gamma=0.5,
-                 min_count=1, max_M=8, verbose=FALSE)
-custom$Prior[c("s0", "tail_mean")]
+regular <- survPT(dat, prior=2, gamma=0.5, verbose=FALSE)
+flat <- survPT(dat, prior=2, flat=TRUE, verbose=FALSE)
 ```
 
-`s0` is the reference tail mass. If omitted it is calibrated from the body
-boundary density with `kappa=0.1`; for uniform centering this gives `1/11`.
-`gamma` sets depth-dependent Beta strength. `gamma=0` gives a flat prior.
-Because each Beta parameter is floored at one, `s0` can differ from the actual
-induced prior mean `tail_mean`. See [Methods](methods.md).
+The default `flat=FALSE` uses the 0.4.0 depth- and reference-dependent alpha
+parameters. `flat=TRUE` selects Beta(1,1) on every branch for both EM and Gibbs,
+equivalent to `gamma=0`. It does not change the centering distribution or tree.
+Both models begin allocation at the centering reference distribution and run
+one MAP-EM fit. There is no preliminary flat-prior optimization.
 
-The tree grows using expected counts under the reference measure. `min_count`
-controls pruning (zero disables count pruning); `max_M` limits ordinary depth.
-The tail split is always retained and can add one level. The tree remains fixed
-after construction.
+`s0` is the reference tail mass, calibrated from the body boundary density with
+`kappa=0.1` if omitted. Uniform centering gives `s0=1/11`. Because Beta parameters
+are floored at one, `Prior$s0` can differ from the induced prior tail mean
+`Prior$tail_mean`. `min_count` controls pruning using reference expected counts;
+`max_M` limits ordinary depth. The final tail split is always retained.
 
-By default a flat-prior fit initializes the working-prior MAP-EM. Each stage
-has cap `max_EM_iter=2000` and tolerance `EM_tol=1e-6`. Inspect both stages in
-`Convergence`; reaching the cap is not convergence. `max_EM_iter=0` returns the
-reference initialization. `flat_init=FALSE` skips the preliminary fit.
+The fit uses at most `max_EM_iter=2000` updates and stops when the leaf-mass
+change is at most `EM_tol=1e-6`. Inspect `Convergence$map`; reaching the iteration
+cap does not imply convergence. With `allocated=1`, `max_EM_iter=0` returns
+the reference initialization and its allocations.
 
-## Add posterior means and uncertainty
+At child level `m`, fitted branch probabilities use bounds
+`[split_epsilon * 2^(-m), 1 - split_epsilon * 2^(-m)]`, with base scale `1e-6`.
+The root has level zero. Its children use `5e-7`; level-two children use `2.5e-7`.
+This also applies to the final tail split and the overlap-count fit.
 
-```r
-set.seed(2026)
-pred <- predict(fit,x,0.95,n_sweeps=2000,burn_in=500,keep_draws=TRUE)
-
-map_curve <- as.numeric(pred$Survival_Probs)  # deterministic MAP-EM evaluated at x
-post <- pred$Posterior$Survival
-post[, c("time", "mean", "lower", "upper", "ess", "mcse")]
-pred$Posterior$Tail                         # posterior S(tau) summary
-pred$Posterior$Draws$Survival                # retained sweeps x target times
-```
-
-`x` is a numeric vector of target times, not observation intervals or covariates.
-`predict(fit,x,0.95)` runs sampling during the call and evaluates survival at
-exactly those times. No preliminary sampler call is needed. Repeated, unsorted
-and single times retain their supplied order. The input model is not changed.
-
-DA-Gibbs draws leaf labels then Beta branches with integer counts. Its target
-is the unrestricted posterior: `split_epsilon` applies only to MAP estimation.
-`n_sweeps` includes burn-in. Thinning starts at `burn_in+1`; the default keeps
-all 1500 post-burn-in sweeps. `keep_draws=FALSE` is the prediction default;
-set it to `TRUE` to retain evaluated curve draws as well as summaries.
-
-The `mean` column is the posterior mean of the curve, not mean event time.
-`lower` and `upper` form pointwise equal-tailed credible intervals, not a
-simultaneous confidence band. ESS and MCSE are approximate single-chain
-diagnostics. Use larger runs, trace plots and independent seeds to investigate
-mixing. The posterior conditions on the retained tree and fixed base parameters.
-
-## Reuse samples or save the model
-
-Every ordinary `predict(..., posterior=TRUE)` call runs a fresh chain from the
-stored MAP fit. To compare different grids or levels with the same draws,
-sample explicitly and pass the result:
+## Estimate curves and sample the posterior
 
 ```r
 set.seed(2026)
-draws <- samplePT(fit,n_sweeps=2000,burn_in=500)
-p95 <- predict(fit,c(0.5,1,2),0.95,samples=draws)
-p90 <- predict(fit,c(2,1,0.5,1),0.90,samples=draws)
-saveRDS(fit,"fit.rds")
-restored <- readRDS("fit.rds")
-predict(restored,c(1,2),posterior=FALSE)
+pred <- predict(fit,x,level=0.95,n_samples=2000,burn_in=3000,thin=1)
+head(pred)                     # x, estimate, lower, upper, mean, median
+attr(pred,"tail")              # same columns, for S(Tau)
+density <- predict(fit,x,type="density",sample=FALSE)
 ```
 
-`samplePT()` samples tree probabilities independently of an evaluation grid;
-`predict()` maps those sampled trees to the supplied target times. When `samples`
-is supplied, no additional random draws are consumed. Models and samples are
-plain R objects and can be restored in a new R session. `posterior=FALSE` always
-gives deterministic prediction without sampling.
+The prediction interface follows 0.2.3. `estimate` is the fitted MAP-EM plug-in
+curve. `mean` and `median` summarize its posterior; they are not mean or median
+event times. `lower` and `upper` are pointwise equal-tailed credible limits.
+For density predictions, the separate `tail` attribute still reports a probability.
+It is available even when the target grid omits `Tau`, or when `x=numeric()`.
 
-## Inspect nodes and deterministic outputs
+The defaults use `n_samples=2000` draws after `burn_in=3000` sweeps, with
+`thin=1`. The total is `burn_in+n_samples*thin`; the first retained sweep is
+`burn_in+thin`. Each call starts at the stored fitted masses. Censored labels
+are drawn afresh, integer counts are aggregated, and conjugate Beta branches
+are sampled without the MAP clipping bound. The prior stored in the fit is used.
+Only curve and tail summaries are returned; raw draws are not retained.
 
-The model fields `Left`, `Right`, `Level`, `Allocations`, `Posterior_Probs`, and
-`Terminal_Nodes` retain their roles. `Posterior_Probs` contains MAP node masses.
-`Allocations` are refreshed at the final masses.
+The input model is unchanged. Repeated and unsorted times keep their order;
+posterior tree sampling does not depend on the prediction grid. Reset the same
+seed to compare grids or credible levels with the same draws. `sample=FALSE`
+or `n_samples=0` consumes no random draws and returns only `x` and `estimate`,
+plus the deterministic `tail` attribute. Saved models can still be restored
+with `readRDS()`; examples do not automatically save models or results.
 
-The prediction result contains `Test_seq`, `Survival_Probs`, `Density`,
-`Tail_Prob`, and `Posterior`. Only `Tail_Prob`, a fitted node mass, also belongs
-to the model. The model contains no prediction or sampler output fields.
+Intervals condition on the retained tree and fixed centering parameters. They
+are not simultaneous bands. Compare summaries across independent runs and
+longer chains to assess Monte Carlo stability.
 
-As of 0.3.2, `survPT()` no longer accepts `test_seq`, `n_sweeps`, `burn_in`,
-`thin`, `credible_level`, `keep_draws`, or the fixed `support` argument.
-Supply target times and interval level to `predict(fit, times, level)`;
-sampler controls belong to `predict()` or `samplePT()`.
+## Inspect fitted state
 
-`Alpha` stores each child's Beta parameter; sibling entries form one Beta
-distribution. `Branch_Probs` are fitted conditional branch probabilities.
-`Parent`, `Left_Child`, `Right_Child` and `Split_Nodes` use one-based R indices;
-absent links are `NA`. `Reference_Probs`, `Reference_Branch_Probs` and
-`Initial_Allocations` expose construction quantities.
+`Left`, `Right`, `Level`, `Allocations`, `Posterior_Probs` and `Terminal_Nodes`
+retain their roles. `Posterior_Probs` contains fitted node masses, not posterior
+mean masses. Final allocations are refreshed at the returned masses. `Alpha`
+stores each child's Beta parameter; siblings form a pair. `Branch_Probs`
+contains fitted conditional probabilities. Tree links use one-based indices.
 
-```r
-stopifnot(abs(sum(fit$Posterior_Probs[fit$Terminal_Nodes])-1) < 1e-10)
-nodes <- data.frame(left=fit$Left, right=fit$Right, depth=fit$Level,
-                    alpha=fit$Alpha, mass=fit$Posterior_Probs)
-```
+`Reference_Probs`, `Reference_Branch_Probs` and `Initial_Allocations` describe
+the centering reference used to construct the partition. Only terminal masses
+sum to one on a pruned tree. Some native vectors appear as one-column matrices;
+use `as.numeric()` if needed. Prediction columns are ordinary numeric vectors.
 
-Only terminal masses should sum to one. Raw depth-level sums need not equal one
-on a pruned tree. Armadillo vectors may appear as one-column matrices; use
-`as.numeric()` when needed. Native `SurvPT()` uses zero-based indices instead.
-
-## Legacy options and generators
-
-`allocated=0` remains a separate overlap-count estimator without EM or Gibbs
-sampling. It now uses the revised partition, priors and unspecified-tail output.
-It is not an alternative implementation of the same MAP estimator.
-
-The simulation generators `data_rc`, `data_ic`, `data_cs` and `fiducial_1` through
-`fiducial_4` are unchanged. See [Limitations](limitations.md) before using the
-legacy current-status `status` field or inspection-count logic. Historical
-bootstrap scripts are separate from the new posterior sampler.
+`allocated=0` retains the historical overlap-count fit without EM or Gibbs;
+use `sample=FALSE` for its predictions. Simulation and parametric helpers are
+unchanged. See [Methods](methods.md) and [Limitations](limitations.md).

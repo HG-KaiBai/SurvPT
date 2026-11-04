@@ -1,4 +1,4 @@
-# SurvPT 0.4.0: fit models, then predict on a target-time vector.
+# SurvPT 0.4.1: fit models, then predict on a target-time vector.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)
@@ -16,12 +16,15 @@ fits <- list(
   weibull = survPT(x, prior = 3, prior_params = c(0.4, 1.5),
                    max_M = 5, verbose = FALSE)
 )
-predictions <- lapply(fits, predict, newdata=grid, posterior=FALSE)
+set.seed(123)
+predictions <- lapply(fits, predict, x=grid, n_samples=500, burn_in=200)
+flat_fit <- survPT(x, prior=2, prior_params=0.4, max_M=5,
+                   flat=TRUE, verbose=FALSE)
 
 checks <- do.call(rbind, lapply(names(fits), function(name) {
   fit <- fits[[name]]
-  s <- as.numeric(predictions[[name]]$Survival_Probs)
-  density <- as.numeric(predictions[[name]]$Density)
+  s <- predictions[[name]]$estimate
+  density <- predict(fit, grid, type="density", sample=FALSE)$estimate
   mass <- sum(fit$Posterior_Probs[fit$Terminal_Nodes])
   stopifnot(abs(mass-1) < 1e-8, all(is.finite(s)),
             all(diff(s) <= 1e-10), all(s >= 0), all(s <= 1+1e-10),
@@ -31,12 +34,16 @@ checks <- do.call(rbind, lapply(names(fits), function(name) {
 }))
 
 print(checks, row.names = FALSE)
+tail_probabilities <- do.call(rbind, lapply(names(predictions), function(name) {
+  data.frame(method=name, attr(predictions[[name]], "tail"))
+}))
+print(tail_probabilities, row.names = FALSE)
 cat("SurvPT version:", as.character(packageVersion("SurvPT")), "\n")
 cat("Every base estimates tail mass only; survival at tau equals that mass.\n")
 
 # Optional plotting in an interactive R session:
 if (interactive()) {
-  plot(grid, as.numeric(predictions$exponential$Survival_Probs), type = "l",
+  plot(grid, predictions$exponential$estimate, type = "l",
        xlab = "Time", ylab = "Survival probability", ylim = c(0, 1))
   lines(grid, pweibull(grid, shape = 1.5, scale = 1/0.4, lower.tail = FALSE),
         col = "red", lty = 2)

@@ -2,90 +2,94 @@
 % Please edit documentation in R/predict.R
 \name{predict.survPT}
 \alias{predict.survPT}
-\title{Predict survival at target times, with optional posterior sampling}
+\title{Predict from a fitted Polya tree with posterior uncertainty}
 \usage{
 \method{predict}{survPT}(
   object,
-  newdata = NULL,
+  x,
   level = 0.95,
-  ...,
-  posterior = TRUE,
-  n_sweeps = 2000,
-  burn_in = 500,
-  thin = 1,
-  samples = NULL,
-  keep_draws = FALSE,
-  verbose = FALSE
+  sample = TRUE,
+  n_samples = 2000L,
+  burn_in = 3000L,
+  thin = 1L,
+  type = c("survival", "density"),
+  ...
 )
 }
 \arguments{
-\item{object}{A model returned by \code{\link{survPT}()}.}
+\item{object}{A fitted model returned by \code{\link{survPT}()}.}
 
-\item{newdata}{Numeric vector of target event times, not a covariate matrix.
-Unsorted and repeated times are allowed and their order is preserved.
-If omitted, use 200 points on \verb{[0,Tau]}.}
+\item{x}{Numeric vector of nonnegative evaluation times, in any order.
+Duplicates and \code{Inf} are allowed; missing values are not. An empty vector
+returns no curve rows but still provides the tail summary.}
 
-\item{level}{Equal-tailed pointwise credible level, supplied as the third
-positional argument in \code{predict(fit, x, 0.95)}.}
+\item{level}{Pointwise credible interval probability, strictly between 0 and 1.}
 
-\item{...}{Reserved for future use; unused arguments raise an error.}
+\item{sample}{Logical, default \code{TRUE}. Set \code{FALSE} for fitted estimates only.}
 
-\item{posterior}{Run posterior sampling and return posterior summaries
-(default \code{TRUE}). Set \code{FALSE} for deterministic MAP predictions only.}
+\item{n_samples}{Number of posterior draws used for summaries, default 2000. Zero also
+disables sampling.}
 
-\item{n_sweeps, burn_in, thin}{Sampler controls passed to \code{\link{samplePT}()}
-when \code{posterior=TRUE} and no explicit \code{samples} are supplied.}
+\item{burn_in}{Number of initial Gibbs sweeps to discard, default 3000.}
 
-\item{samples}{Optional result of \code{\link{samplePT}(object)}. When supplied,
-reuse these draws without further sampling. Sampler controls are ignored.}
+\item{thin}{Retain every \code{thin}-th sweep after burn-in, default 1.}
 
-\item{keep_draws}{Include evaluated curve draws and the underlying tree draws
-in \code{Posterior$Draws} (default \code{FALSE}).}
+\item{type}{Either \code{"survival"} (default) or \code{"density"}.}
 
-\item{verbose}{Print sampler progress.}
+\item{...}{Reserved for future arguments. Unrecognized arguments are rejected.}
 }
 \value{
-A list with \code{Test_seq}, deterministic \code{Survival_Probs}, \code{Density},
-\code{Tail_Prob} and \code{Posterior}. With \code{posterior=FALSE}, \code{Posterior} is \code{NULL}.
-Otherwise it contains \code{Survival} and \code{Density} data frames with one row per
-target time and columns \code{time}, \code{mean}, \code{sd}, \code{lower}, \code{median}, \code{upper},
-\code{ess}, \code{mcse}; \code{Terminal_Probs} and \code{Tail} summaries; sampler \code{Settings};
-and optional \code{Draws}. These means are posterior means of probabilities
-and densities, not mean event time. ESS/MCSE are approximate single-chain
-diagnostics. The deterministic result is retained alongside the posterior.
+A data frame with columns \code{x}, \code{estimate}, \code{lower}, \code{upper}, \code{mean}
+and \code{median}, preserving the order of \code{x}. Without sampling, only \code{x} and
+\code{estimate} are returned. Attributes record \code{type} and \code{sample}, plus
+\code{level}, \code{n_samples}, \code{burn_in} and \code{thin} when sampling is enabled.
+The \code{tail} attribute is a one-row data frame with the same columns:
+\code{x} is \code{Tau}, \code{estimate} is \code{object$Tail_Prob}, and the remaining columns
+summarize the posterior tail probability. Draws are used internally to
+compute summaries and are not retained in the returned object.
 }
 \description{
-\code{predict(fit, x, 0.95)} accepts a numeric vector of target times \code{x} and
-returns deterministic survival probabilities and posterior summaries at
-exactly those times. By default it runs DA-Gibbs during this call; prior
-sampling is not required. It never rebuilds the tree or refits MAP-EM.
+Evaluate the fitted MAP-EM distribution and optionally sample its posterior
+at specified times. The interface follows version 0.2.3, with a separate
+tail probability summary for the unspecified tail in version 0.4.0.
 }
 \details{
-Model fitting, posterior sampling and evaluation are independent operations.
-The default prediction call orchestrates sampling and evaluation on the
-requested time vector. The posterior on tree probabilities is independent of
-the prediction grid; each sampled tree is evaluated at the supplied times.
-There is no interpolation from a previously stored curve or implicit extra
-prediction grid. \code{set.seed()} controls fresh sampling.
+\code{estimate} is the fitted MAP-EM plug-in prediction. It is not the mode of the
+marginal posterior of survival or density. No refitting or tree rebuilding
+takes place during prediction. With \code{max_EM_iter=0}, the estimate evaluates
+the reference initialization. With \code{allocated=0}, only \code{sample=FALSE} (or
+\code{n_samples=0}) is supported.
 
-Every call with \verb{posterior=TRUE, samples=NULL} runs a fresh chain starting
-from the stored MAP fit. To compare grids or credible levels using the same
-Monte Carlo draws, obtain \code{samples <- samplePT(fit)} and pass it explicitly.
-\code{posterior=FALSE} consumes no random draws. Neither mode mutates \code{object}.
+Each Gibbs sweep allocates censored observations to leaves with probabilities
+proportional to current leaf mass times conditional interval coverage.
+Exact-event labels are fixed. Integer counts are aggregated up the tree,
+then each left split is drawn from \code{Beta(alpha_left + count_left, alpha_right + count_right)}. Fractional fitted counts are not treated as
+observed counts. Draws are unrestricted, without MAP clipping. The stored
+prior is used, including Beta(1,1) when the fit used \code{flat=TRUE}.
 
-At times above \code{object$Tau}, including \code{Inf}, survival and density outputs
-and summaries are \code{NA}. The model specifies only the total tail probability.
-Credible intervals are pointwise and condition on the retained tree and
-fixed base parameters. The separate overlap-count fit (\code{allocated=0})
-supports only \code{posterior=FALSE}.
+Each call starts from the fitted masses and runs \code{burn_in + n_samples*thin}
+sweeps. Retention starts at \code{burn_in + thin}. \code{set.seed()} controls sampling;
+\code{sample=FALSE} consumes no random draws. The input model is unchanged and
+remains usable after \code{saveRDS()} and \code{readRDS()}.
+
+Intervals are equal-tailed and pointwise, conditional on the retained tree
+and fixed centering parameters. Finite chains have Monte Carlo error;
+compare summaries across independent runs and longer chains to assess stability.
+
+At times above \code{object$Tau}, including \code{Inf}, curve estimates and posterior
+summaries are \code{NA}: the model specifies only total tail probability, with
+no shape inside the tail. \code{attr(result, "tail")} always reports this
+probability \code{S(Tau)}, even when \code{x} omits \code{Tau} or \code{type="density"}.
 }
 \examples{
 d <- data.frame(L=c(0,1,2,3), R=c(1,2,Inf,Inf))
-fit <- survPT(d, prior=1, max_M=3, verbose=FALSE)
-x <- c(0,0.5,1,2,3)
+fit <- survPT(d, max_M=3, verbose=FALSE)
 set.seed(42)
-p <- predict(fit, x, 0.95, n_sweeps=200, burn_in=50)
-p$Survival_Probs
-p$Posterior$Survival
-predict(fit, x, posterior=FALSE)$Survival_Probs
+p <- predict(fit, c(0,0.5,1,2,3), n_samples=200, burn_in=50)
+p
+attr(p, "tail")
+predict(fit, c(1,2), sample=FALSE)
+}
+\seealso{
+\code{\link{survPT}()}
 }

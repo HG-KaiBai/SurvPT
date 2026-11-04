@@ -12,11 +12,11 @@
   estimated exponential rate. The Weibull body center is a software extension
   of the manuscript's uniform/exponential choices.
 - Reported credible intervals are pointwise, not simultaneous bands. Finite
-  Gibbs runs require mixing assessment. ESS/MCSE are approximate single-chain
-  diagnostics, not convergence certification.
-- MAP-EM may have multiple stationary points. Flat-prior initialization is the
-  manuscript's default; monotone objective ascent alone does not prove global
-  optimality. Inspect both convergence flags and iteration caps.
+  Gibbs runs have Monte Carlo error; compare independent runs and longer chains.
+  Summary stability alone does not certify convergence.
+- MAP-EM may have multiple stationary points. Allocation starts at the centering
+  reference; monotone objective ascent alone does not prove global optimality.
+  Inspect `Convergence$map` and its iteration cap.
 - Beta parameters are floored at one. `Prior$s0` is the reference tail target;
   `Prior$tail_mean` is the actual mean induced by the floored prior, and can differ.
 - The model is univariate with no covariates, delayed entry or sampling-truncation
@@ -36,7 +36,7 @@ uniform no longer treats the tail as an atom at infinity.
 
 Version 0.3.2 makes `survPT()` exclusively fit-only. Use
 `predict(fit,times,level)` for curves and uncertainty: it runs sampling during
-prediction unless `posterior=FALSE` or explicit `samples` are supplied. The
+prediction unless `sample=FALSE` or `n_samples=0`. The
 previous combined arguments and fixed `support` argument have been removed. Model
 lists saved by versions before 0.3.1 must be refitted to obtain serializable
 state for the new prediction and sampling methods.
@@ -56,9 +56,8 @@ the separate `fit$Tail_Prob`. These missing values implement the unspecified-tai
 model rather than a numerical failure.
 
 **Slow or large runs:** lower tree depth, raise `min_count`, reduce grid size, or
-retain fewer draws. Prediction's default `keep_draws=FALSE` drops draws from its
-result but the calculation still temporarily stores them. Standalone `samplePT()`
-retains tree draws for reuse. Coverage and prediction caches each have
+use fewer draws. Prediction returns summaries only, but temporarily stores
+draws internally to calculate them. Coverage and prediction caches each have
 a 64 MiB cap; native sample arrays have a 512 MiB limit before R overhead.
 
 **Loaded old version:** restart R and use `devtools::load_all()` for the checkout,
@@ -73,8 +72,8 @@ Build dependencies are described in [Installation](installation.md).
   when `Ri=0`.
 - The Weibull `estimate()` helper retains its existing numerical optimization;
   it returns only parameters and requires separate diagnostic assessment.
-- Several scripts launch large experiments, invoke viewers, or assume forked
-  workers unsupported on Windows. Start from `Examples/quickstart.R` and
-  `Examples/posterior.R`. Research scripts must use grids within each fit's `tau`.
+- Several scripts launch large experiments. Start from `Examples/quickstart.R`
+  and `Examples/posterior.R`. Results stay in R; plots display interactively.
+  Research scripts must use grids within each fit's `tau`.
 
-Run `tests/scpt.R` and `tests/interfaces.R` for numerical and separated-interface checks.
+Run `tests/fit-predict.R` for numerical and interface checks.

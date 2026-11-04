@@ -2,6 +2,7 @@
 #include "PT.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 
 namespace {
@@ -20,12 +21,12 @@ bool contains(double t, double a, double b) {
 PT::PT(const arma::mat& X, int prior, int max_depth, const arma::vec& parameters,
        int allocated, int max_iter, double tolerance, bool verbose,
        double gamma, double kappa, double s0, double min_count,
-       double epsilon, bool flat_init) :
+       double epsilon, bool flat) :
     data(X), parameters(parameters), prior(prior),
     max_depth(max_depth), allocated(allocated), max_iter(max_iter),
     tolerance(tolerance), gamma(gamma), kappa(kappa), s0(s0),
     min_count(min_count), epsilon(epsilon), tau(0), h_tau(0),
-    verbose(verbose), flat_init(flat_init) {
+    verbose(verbose), flat(flat) {
     if (data.n_rows == 0 || data.n_cols < 2)
         Rcpp::stop("X must have observations and at least two endpoint columns.");
     if (prior < 1 || prior > 3 || allocated < 0 || allocated > 1)
@@ -124,7 +125,7 @@ void PT::add_children(int parent, double cut) {
     const int left = nodes.size(), right = left+1, depth = p.depth+1;
     const double log_left = log_reference_probability(p.left, cut);
     const double log_right = log_reference_probability(cut, p.right);
-    const double scale = 2*gamma*depth*depth;
+    const double scale = flat ? 0.0 : 2*gamma*depth*depth;
     nodes.push_back({p.left, cut, log_left, reference_count(p.left,cut),
         std::max(1.0,scale*std::exp(log_left-p.log_center)), depth,parent,-1,-1});
     nodes.push_back({cut,p.right,log_right,reference_count(cut,p.right),
@@ -232,19 +233,22 @@ void PT::propagate() {
         mass(left)=std::exp(log_mass(left)); mass(right)=std::exp(log_mass(right));
     }
 }
-void PT::update_splits(const arma::vec& values, bool flat) {
+void PT::update_splits(const arma::vec& values) {
     for (int parent : splits) {
         const int left=nodes[parent].left_child, right=nodes[parent].right_child;
-        const double a=(flat ? 1 : nodes[left].alpha)+values(left);
-        const double b=(flat ? 1 : nodes[right].alpha)+values(right);
+        const double a=nodes[left].alpha+values(left);
+        const double b=nodes[right].alpha+values(right);
         const double q=a+b>2 ? (a-1)/(a+b-2) : 0.5;
-        theta(parent)=std::min(1-epsilon,std::max(epsilon,q));
+        // Both children share level m; bound their conditional probabilities
+        // by epsilon * 2^(-m), including the final body/tail split.
+        const double bound=std::ldexp(epsilon,-nodes[left].depth);
+        theta(parent)=std::min(1-bound,std::max(bound,q));
     }
     propagate();
 }
-double PT::objective(double log_likelihood, bool flat) const {
+double PT::objective(double log_likelihood) const {
     double result=log_likelihood;
-    if (!flat) for (int parent : splits) {
+    for (int parent : splits) {
         const double a=nodes[nodes[parent].left_child].alpha;
         const double b=nodes[nodes[parent].right_child].alpha;
         if (a>1) result+=(a-1)*std::log(theta(parent));
@@ -252,19 +256,19 @@ double PT::objective(double log_likelihood, bool flat) const {
     }
     return result;
 }
-PT::Stage PT::run_em(bool flat) {
+PT::Stage PT::run_em() {
     Stage result;
     double likelihood=allocate(counts,false);
-    result.objective.push_back(objective(likelihood,flat));
+    result.objective.push_back(objective(likelihood));
     for (int iter=1; iter<=max_iter; ++iter) {
         Rcpp::checkUserInterrupt();
         const arma::vec previous=mass;
-        update_splits(counts,flat);
+        update_splits(counts);
         double delta=0;
         for (int leaf : leaves) delta+=std::pow(mass(leaf)-previous(leaf),2);
         result.difference=std::sqrt(delta);
         likelihood=allocate(counts,false); // Refresh final counts at final masses.
-        result.objective.push_back(objective(likelihood,flat));
+        result.objective.push_back(objective(likelihood));
         result.iterations=iter;
         if (verbose && (iter==1 || iter%100==0 || result.difference<=tolerance))
             Rcpp::Rcout << (flat ? "Flat-prior" : "MAP") << " iteration " << iter
@@ -286,13 +290,12 @@ void PT::fit() {
                     std::max(l,node.left)<std::min(r,node.right);
             }
         }
-        update_splits(counts,false); return;
+        update_splits(counts); return;
     }
     if (max_iter == 0) return;
-    for (int parent : splits) theta(parent)=std::min(1-epsilon,std::max(epsilon,theta(parent)));
-    propagate();
-    if (flat_init) flat_stage=run_em(true);
-    map_stage=run_em(false);
+    // The first E-step uses the centering reference masses. The selected
+    // prior is fixed for the entire fit and the subsequent Gibbs sampler.
+    map_stage=run_em();
 }
 double PT::conditional_density(double t,double a,double b) const {
     if (b==INF || !contains(t,a,b)) return 0;
@@ -341,21 +344,23 @@ void PT::prepare_predictions() {
         }
     }
 }
-Rcpp::List PT::sample(int sweeps,int burn_in,int thin) {
+Rcpp::List PT::sample(int n_samples,int burn_in,int thin) {
     if (allocated!=1) Rcpp::stop("DA-Gibbs requires allocated = 1.");
-    if (sweeps<=0 || burn_in<0 || burn_in>=sweeps || thin<1)
-        Rcpp::stop("Require n_sweeps > burn_in >= 0 and thin >= 1.");
+    if (n_samples<=0 || burn_in<0 || thin<1)
+        Rcpp::stop("Require n_samples > 0, burn_in >= 0 and thin >= 1.");
     if (!coverage_prepared) prepare_coverage();
-    const int kept=1+(sweeps-burn_in-1)/thin;
+    const int kept=n_samples;
+    const std::int64_t sweeps=static_cast<std::int64_t>(burn_in)+
+        static_cast<std::int64_t>(n_samples)*thin;
     const double cells=static_cast<double>(kept)*(leaves.size()+splits.size());
     if (cells>512.0*1024*1024/sizeof(double))
-        Rcpp::stop("Requested draws exceed 512 MiB; reduce sweeps or increase thin.");
+        Rcpp::stop("Requested draws exceed 512 MiB; reduce n_samples or tree depth.");
     arma::mat leaf_draws(kept,leaves.size()),branch_draws(kept,splits.size());
-    Rcpp::IntegerVector iterations(kept);
+    Rcpp::NumericVector iterations(kept);
     const arma::vec saved_mass=mass,saved_log_mass=log_mass,saved_theta=theta;
     arma::vec integer_counts;
     int saved=0;
-    for (int g=1; g<=sweeps; ++g) {
+    for (std::int64_t g=1; g<=sweeps; ++g) {
         Rcpp::checkUserInterrupt();
         allocate(integer_counts,true);
         for (int parent : splits) {
@@ -365,7 +370,7 @@ Rcpp::List PT::sample(int sweeps,int burn_in,int thin) {
                                   nodes[right].alpha+integer_counts(right));
         }
         propagate();
-        if (g>burn_in && (g-burn_in-1)%thin==0) {
+        if (g>burn_in && (g-burn_in)%thin==0) {
             for (size_t j=0; j<leaves.size(); ++j) leaf_draws(saved,j)=mass(leaves[j]);
             for (size_t j=0; j<splits.size(); ++j) branch_draws(saved,j)=theta(splits[j]);
             iterations[saved]=g; ++saved;
@@ -409,7 +414,7 @@ Rcpp::List PT::output() const {
         Rcpp::Named("initial_allocations")=initial,Rcpp::Named("largest_obs")=tau,
         Rcpp::Named("tail_node")=tail,Rcpp::Named("tail_prob")=mass(tail),
         Rcpp::Named("tail_prior")=s0,Rcpp::Named("prior_tail_mean")=prior_tail_mean,
-        Rcpp::Named("flat_fit")=stage_output(flat_stage),Rcpp::Named("map_fit")=stage_output(map_stage));
+        Rcpp::Named("map_fit")=stage_output(map_stage));
 }
 
 // Plain R data are used instead of an external pointer, so saved model objects
@@ -423,7 +428,7 @@ Rcpp::List PT::state(const Rcpp::List& tree_output) const {
         Rcpp::Named("gamma")=gamma,Rcpp::Named("kappa")=kappa,Rcpp::Named("s0")=s0,
         Rcpp::Named("min_count")=min_count,Rcpp::Named("epsilon")=epsilon,
         Rcpp::Named("allocated")=allocated,Rcpp::Named("max_depth")=max_depth,
-        Rcpp::Named("flat_init")=flat_init,Rcpp::Named("tree")=tree_output,
+        Rcpp::Named("flat")=flat,Rcpp::Named("tree")=tree_output,
         Rcpp::Named("log_mass")=log_mass,Rcpp::Named("log_center")=log_center,
         Rcpp::Named("theta")=theta);
 }
@@ -442,7 +447,9 @@ PT::PT(const Rcpp::List& saved, bool verbose) : verbose(verbose) {
     epsilon=Rcpp::as<double>(saved["epsilon"]);
     allocated=Rcpp::as<int>(saved["allocated"]);
     max_depth=Rcpp::as<int>(saved["max_depth"]);
-    flat_init=Rcpp::as<bool>(saved["flat_init"]);
+    // Older 0.4.0 states already contain the actual Alpha values; those remain
+    // sufficient for prediction even though the old warm-start flag is gone.
+    flat=saved.containsElementNamed("flat") ? Rcpp::as<bool>(saved["flat"]) : false;
     max_iter=0; tolerance=0; h_tau=prior==1 ? 0 : hazard(tau);
     const Rcpp::List tree=saved["tree"];
     const arma::vec left=Rcpp::as<arma::vec>(tree["left_bound"]);

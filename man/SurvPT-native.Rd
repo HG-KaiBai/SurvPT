@@ -7,7 +7,7 @@
 \usage{
 SurvPT(X, prior, max_M, prior_params, allocated,
   max_EM_iter, EM_tol, verbose, gamma = 0.5, kappa = 0.1, s0 = -1,
-  min_count = 1, split_epsilon = 1e-6, flat_init = TRUE)
+  min_count = 1, split_epsilon = 1e-6, flat = FALSE)
 }
 \arguments{
 \item{X}{Numeric matrix with left and right endpoints in the first two columns.}
@@ -21,7 +21,7 @@ SurvPT(X, prior, max_M, prior_params, allocated,
 
 \item{allocated}{MAP-EM (1) or historical overlap counts (0).}
 
-\item{max_EM_iter}{Maximum iterations per EM stage.}
+\item{max_EM_iter}{Maximum iterations for the single MAP-EM fit.}
 
 \item{EM_tol}{Leaf-mass change tolerance.}
 
@@ -35,9 +35,11 @@ SurvPT(X, prior, max_M, prior_params, allocated,
 
 \item{min_count}{Reference-count threshold for splitting.}
 
-\item{split_epsilon}{MAP-only branch probability bound.}
+\item{split_epsilon}{Base scale of the MAP bound. At child level \code{m},
+the lower bound is \code{split_epsilon * 2^(-m)} and the upper bound is one
+minus that value.}
 
-\item{flat_init}{Fit a flat-prior initialization before the working prior.}
+\item{flat}{Use Beta(1,1) for fitting and posterior sampling.}
 }
 \value{
 Native node arrays and diagnostics. All node indices are zero-based;
@@ -50,3 +52,4 @@ Native entry point for the retained tree and deterministic MAP-EM fit.
 Prefer \code{\link{survPT}()} for validation, automatic rate estimation,
 one-based indices and a serializable S3 model.
 }
+\keyword{internal}

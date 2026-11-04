@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.4.0.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.4.1.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.4.0.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.4.1.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -39,12 +39,12 @@ packageVersion("SurvPT")
 
 ## Install the Windows binary
 
-The `SurvPT_0.4.0.zip` binary is built with R 4.5.1 for Windows x64. With R 4.5.x,
+The `SurvPT_0.4.1.zip` binary is built with R 4.5.1 for Windows x64. With R 4.5.x,
 set the working directory to the archive's location and install it directly:
 
 ```r
 install.packages("Rcpp")
-install.packages("SurvPT_0.4.0.zip", repos = NULL, type = "win.binary")
+install.packages("SurvPT_0.4.1.zip", repos = NULL, type = "win.binary")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -78,8 +78,9 @@ Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Ex
 
 ## Reproducibility
 
-Version 0.4.0 uses reference-count pruning, asymmetric tail-path Beta priors,
-flat-prior initialization followed by MAP-EM, and optional DA-Gibbs. All families
+Version 0.4.1 uses reference-count pruning, asymmetric tail-path Beta priors,
+centering-based initialization followed by a single MAP-EM fit, and optional
+DA-Gibbs. `flat=TRUE` selects Beta(1,1) for the entire fit and sampler. All families
 now leave the tail shape unspecified and return `NA` beyond the largest finite
 endpoint. Deterministic and posterior predictions are returned by `predict()`.
 `survPT()` accepts only fitting parameters; use

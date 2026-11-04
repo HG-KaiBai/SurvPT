@@ -1,3 +1,26 @@
+# SurvPT 0.4.1
+
+- Keeps the infinite support, separate unspecified tail, reference-based
+  partition/pruning and asymmetric alpha construction from 0.4.0.
+- Starts allocation from the centering reference and runs one MAP-EM fit.
+  Replaces automatic flat-prior initialization with `flat=FALSE/TRUE`; a flat
+  model uses Beta(1,1) throughout both fitting and posterior sampling.
+- Uses two PT interfaces: `survPT()` fits and `predict.survPT()` evaluates and
+  samples. Removes the standalone `samplePT()` and public native fit entry point.
+- Uses the 0.2.3 prediction arguments (`sample`, `n_samples`, `burn_in`,
+  `thin`, `type`) and data-frame output, without `keep_samples` or raw draw
+  attributes. Tail summaries appear in `attr(prediction, "tail")`.
+- Defaults to `n_samples=2000` and `burn_in=3000` during prediction.
+- Uses level-dependent MAP bounds: at child level `m`, the lower bound is
+  `split_epsilon * 2^(-m)` (base scale `1e-6`) and the upper bound is one minus
+  that value, including the final tail split. Gibbs draws remain unrestricted.
+- Posterior retention uses `burn_in + n_samples*thin` sweeps and keeps exactly
+  `n_samples` draws. Predictions beyond `Tau` remain `NA`.
+- Updates examples to the 0.2.3 workflow; all results and plots stay in the R
+  session. No CSV, RData or image files are automatically saved.
+- Adds regression checks for centering initialization, one-stage EM, flat-prior
+  sampling, analytic and numerical posterior targets, tail outputs and interfaces.
+
 # SurvPT 0.4.0
 
 - Releases the separated PT workflow: `survPT()` fits a serializable model,

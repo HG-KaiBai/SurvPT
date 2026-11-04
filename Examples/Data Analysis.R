@@ -46,7 +46,7 @@ pt_boot <- function(data, B = 1000){
   x = seq(0, max(obs.mat), by = max(obs.mat)/200)
   exp_par = estimate_exp(data[,1], data[,2])
 
-  fit = survPT(data, prior = 2, prior_params = exp_par, max_EM_iter = 2000, EM_tol = 1e-6, verbose = F)
+  fit = survPT(data, prior = 2, prior_params = exp_par, max_EM_iter = 2000, EM_tol = 1e-6, verbose = T)
   surv_probs = predict(fit, x, posterior = FALSE)$Survival_Probs
 
 
@@ -90,7 +90,7 @@ tryCatch({
   cat("Error in PT Bootstrap:\n")
   print(e)
 })
-
+pt_surv = surv_probs
 
 
 start_time <- Sys.time()
@@ -119,10 +119,10 @@ turnbull_ci <- subset(turnbull_ci, is.finite(x))
 plot <- ggplot() +
 
   # Confidence intervals
-  geom_ribbon(
-    aes(x = x, ymin = pt_lower, ymax = pt_upper,
-        fill = "PT Estimate"), alpha = 0.2
-  ) +
+  # geom_ribbon(
+  #   aes(x = x, ymin = pt_lower, ymax = pt_upper,
+  #       fill = "PT Estimate"), alpha = 0.2
+  # ) +
   geom_ribbon(
     aes(x = x, ymin = fid_lower, ymax = fid_upper,
         fill = "Fiducial Estimate"), alpha = 0.2

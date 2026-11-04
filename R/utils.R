@@ -1,5 +1,5 @@
 pt_scalar <- function(value, name, lower, upper = Inf, integer = FALSE) {
-    if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
+    if (!is.numeric(value) || is.complex(value) || length(value) != 1L || !is.finite(value) ||
         value < lower || value > upper || (integer && value != floor(value)))
         stop(name, ' is outside its allowed range.')
 }

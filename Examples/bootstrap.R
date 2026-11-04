@@ -36,7 +36,7 @@ icfit_boot_quantile <- function(df, times, B = 1000) {
     ans = c()
     for (prior in c(1, 2)){
       tree = survPT(d, prior = prior, prior_params = ep, EM_tol = 1e-4, verbose = FALSE)
-      ans = c(ans, predict(tree, times, posterior = FALSE)$Survival_Probs)
+      ans = c(ans, predict(tree, times, sample = FALSE)$estimate)
     }
     np = fit_turnbull(times, fit)
     ans = c(ans, np)
@@ -48,7 +48,7 @@ icfit_boot_quantile <- function(df, times, B = 1000) {
   t_hat = c()
   for (prior in c(1, 2)){
     tree0 = survPT(df, prior = prior, prior_params = ep0, EM_tol = 1e-4, verbose = FALSE)
-    t_hat = c(t_hat, predict(tree0, times, posterior = FALSE)$Survival_Probs)
+    t_hat = c(t_hat, predict(tree0, times, sample = FALSE)$estimate)
   }
   np_hat = fit_turnbull(times, fit0)
   t_hat <- c(t_hat, np_hat)

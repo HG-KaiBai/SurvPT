@@ -2,8 +2,9 @@
 
 [Back to README](../README.md)
 
-Version 0.4.0 implements Sections 2.2-2.5 and Algorithms 1-2 of the supplied
-manuscript *Self-Consistent Polya Trees for Arbitrarily Censored Survival Data*.
+Version 0.4.1 retains the reference tree and tail construction from the supplied
+manuscript *Self-Consistent Polya Trees for Arbitrarily Censored Survival Data*,
+with a single fit initialized at the centering reference distribution.
 The manuscript's uniform and exponential body centers are supported. Weibull
 body centering is retained as an explicit extension, using the same construction.
 
@@ -49,7 +50,9 @@ its parent's reference mass. Equation (2) gives
 The default is `gamma=0.5`. Body-only median splits have `r=1/2` and recover
 the old symmetric `max(1,m^2/2)` parameters. Splits on the rightmost path are
 generally asymmetric, including the final body/tail split. `gamma=0` gives
-the flat prior on every branch.
+the flat prior on every branch. The explicit option `flat=TRUE` has the same
+effect, overriding `gamma` for both fitting and posterior sampling. It does
+not change the reference measure, splits or pruning.
 
 The initial measure is the reference measure itself: branches start at `r`,
 not necessarily one half or the floored Beta means. Initial expected counts
@@ -83,25 +86,29 @@ Leaf expected counts are summed over observations, then aggregated up the tree.
 Each M-step uses
 
 \[
-q_L=\operatorname{clip}_{[\epsilon,1-\epsilon]}
+q_L=\operatorname{clip}_{[\epsilon_m,1-\epsilon_m]}
 \frac{\alpha_L+N_L-1}{\alpha_L+\alpha_R+N_L+N_R-2}.
 \]
 
 All prior parameters are at least one. If the denominator is zero, both
-posterior shapes equal one and `q_L=1/2` is used. `epsilon=1e-6` is configurable.
+posterior shapes equal one and `q_L=1/2` is used. At child level `m`,
+`epsilon_m = split_epsilon * 2^(-m)`, with base scale `split_epsilon=1e-6`.
+The root is level zero, so its children use a bound of `5e-7`. The final
+body/tail split follows its children's actual level, including after pruning.
 Child masses are parent mass times conditional branch probabilities.
 
-By default a flat-prior EM fit is run first and initializes the working-prior
-fit. Each stage stops when the Euclidean leaf-mass change is at most `EM_tol`
-(default `1e-6`), or after `max_EM_iter` updates (default 2000 per stage).
-`flat_init=FALSE` skips the first stage. `max_EM_iter=0` returns the reference
-measure and reference allocations without either optimization stage.
+The first E-step uses the centering reference masses. A single MAP-EM fit uses
+the selected alpha parameters throughout and stops when the Euclidean leaf-mass
+change is at most `EM_tol` (default `1e-6`), or after `max_EM_iter` updates
+(default 2000). There is no flat-prior warm start. `flat=TRUE` selects a flat
+model for the entire fit. With `allocated=1`, `max_EM_iter=0` returns the
+reference measure and reference allocations without optimization.
 
-`Convergence$flat` and `$map` return iteration counts, convergence flags, final
-changes and objective histories. The recorded log posterior kernels omit Beta
+`Convergence$map` returns the iteration count, convergence flag, final change
+and objective history. The recorded log posterior kernels omit Beta
 normalization constants and exact-observation conditional-density constants;
 these are independent of the branch probabilities on the retained tree.
-Compare monotonicity within a stage, not across the two different priors.
+The history refers to the single selected prior.
 Final `Allocations` are recomputed from the returned masses.
 
 ## Exact-target DA-Gibbs (Algorithm 2)
@@ -121,23 +128,23 @@ No continuous event times are imputed.
 
 Model fitting is deterministic and independent of target times. Prediction
 with `predict(fit,times,0.95)` runs DA-Gibbs by default during that call; use
-`posterior=FALSE` for deterministic predictions alone. The manuscript's setup is
-`n_sweeps=2000, burn_in=500, thin=1`, retaining 1500 sweeps. `set.seed()` controls
-R's random stream. Deterministic predictions remain in `Survival_Probs`;
-summaries and optional raw draws appear separately in the prediction's `Posterior`.
+`sample=FALSE` for deterministic predictions alone. The defaults are
+`n_samples=2000, burn_in=3000, thin=1`. There are `burn_in+n_samples*thin`
+sweeps; retention begins at `burn_in+thin`. `set.seed()` controls R's random
+stream. Deterministic predictions appear in `estimate`; `lower`, `upper`,
+`mean` and `median` summarize the posterior at each supplied `x`.
 
-`samplePT(fit)` exposes grid-independent tree draws. The ordinary prediction
-call samples these trees internally and evaluates them only at the supplied
-target times. Passing `samples=draws` explicitly reuses a previous chain without
-sampling again. Neither prediction nor sampling changes the input model,
+Prediction samples tree masses internally and evaluates them at the supplied
+times. Draws are used temporarily to compute summaries and are not returned.
+The one-row `tail` attribute reports
+`S(tau)` and its posterior summary independently of the target grid or curve type.
+Neither prediction nor sampling changes the input model,
 re-estimates base parameters, reruns EM or rebuilds the partition. Fitted state
-is stored as plain R arrays, so saved models and samples work in a fresh session.
+is stored as plain R arrays, so saved models work in a fresh session.
 
-Reported intervals are equal-tailed pointwise credible intervals. Approximate
-single-chain ESS uses the initial positive sequence of paired autocorrelations,
-with at most 1000 lags; MCSE is the sample SD divided by the square root of ESS.
-These summaries do not prove mixing. Inspect trace plots and compare independent
-chains when using inference substantively. Tree and base-parameter uncertainty
+Reported intervals are equal-tailed pointwise credible intervals.
+Compare summaries across independent runs and longer chains to assess stability.
+Tree and base-parameter uncertainty
 are not integrated out.
 
 ## Evaluation and implementation
@@ -163,8 +170,6 @@ it is not Algorithm 1 and is not a faster setting for the same estimator.
 | --- | --- |
 | `R/PT.R` | Fit-only S3 model, validation and rate selection |
 | `R/predict.R` | Target-time prediction, sampling orchestration and posterior summaries |
-| `R/sample.R` | Standalone posterior sampling from a stored model |
 | `src/PT.cpp` | Reference tree, asymmetric priors, MAP-EM, DA-Gibbs, prediction |
 | `R/MLE_estimate.R` | Parametric fits; exponential score solved without a rate floor |
-| `tests/scpt.R` | Reference/count checks, MAP ascent, analytic and quadrature posterior checks |
-| `tests/interfaces.R` | Fresh prediction sampling, time ordering, reusable draws, serialization and unchanged model state |
+| `tests/fit-predict.R` | Reference/count checks, one-stage MAP, analytic and quadrature posteriors, tail output, thinning, time ordering and serialization |

@@ -31,8 +31,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // SurvPT
-Rcpp::List SurvPT(const arma::mat X, const int prior, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double gamma, const double kappa, const double s0, const double min_count, const double split_epsilon, const bool flat_init);
-RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP priorSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP gammaSEXP, SEXP kappaSEXP, SEXP s0SEXP, SEXP min_countSEXP, SEXP split_epsilonSEXP, SEXP flat_initSEXP) {
+Rcpp::List SurvPT(const arma::mat X, const int prior, const int max_M, const arma::vec prior_params, const int allocated, const int max_EM_iter, const double EM_tol, const bool verbose, const double gamma, const double kappa, const double s0, const double min_count, const double split_epsilon, const bool flat);
+RcppExport SEXP _SurvPT_SurvPT(SEXP XSEXP, SEXP priorSEXP, SEXP max_MSEXP, SEXP prior_paramsSEXP, SEXP allocatedSEXP, SEXP max_EM_iterSEXP, SEXP EM_tolSEXP, SEXP verboseSEXP, SEXP gammaSEXP, SEXP kappaSEXP, SEXP s0SEXP, SEXP min_countSEXP, SEXP split_epsilonSEXP, SEXP flatSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::traits::input_parameter< const arma::mat >::type X(XSEXP);
@@ -48,23 +48,23 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const double >::type s0(s0SEXP);
     Rcpp::traits::input_parameter< const double >::type min_count(min_countSEXP);
     Rcpp::traits::input_parameter< const double >::type split_epsilon(split_epsilonSEXP);
-    Rcpp::traits::input_parameter< const bool >::type flat_init(flat_initSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPT(X, prior, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, gamma, kappa, s0, min_count, split_epsilon, flat_init));
+    Rcpp::traits::input_parameter< const bool >::type flat(flatSEXP);
+    rcpp_result_gen = Rcpp::wrap(SurvPT(X, prior, max_M, prior_params, allocated, max_EM_iter, EM_tol, verbose, gamma, kappa, s0, min_count, split_epsilon, flat));
     return rcpp_result_gen;
 END_RCPP
 }
 // SurvPTSample
-Rcpp::List SurvPTSample(const Rcpp::List state, const int n_sweeps, const int burn_in, const int thin, const bool verbose);
-RcppExport SEXP _SurvPT_SurvPTSample(SEXP stateSEXP, SEXP n_sweepsSEXP, SEXP burn_inSEXP, SEXP thinSEXP, SEXP verboseSEXP) {
+Rcpp::List SurvPTSample(const Rcpp::List state, const int n_samples, const int burn_in, const int thin, const bool verbose);
+RcppExport SEXP _SurvPT_SurvPTSample(SEXP stateSEXP, SEXP n_samplesSEXP, SEXP burn_inSEXP, SEXP thinSEXP, SEXP verboseSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::List >::type state(stateSEXP);
-    Rcpp::traits::input_parameter< const int >::type n_sweeps(n_sweepsSEXP);
+    Rcpp::traits::input_parameter< const int >::type n_samples(n_samplesSEXP);
     Rcpp::traits::input_parameter< const int >::type burn_in(burn_inSEXP);
     Rcpp::traits::input_parameter< const int >::type thin(thinSEXP);
     Rcpp::traits::input_parameter< const bool >::type verbose(verboseSEXP);
-    rcpp_result_gen = Rcpp::wrap(SurvPTSample(state, n_sweeps, burn_in, thin, verbose));
+    rcpp_result_gen = Rcpp::wrap(SurvPTSample(state, n_samples, burn_in, thin, verbose));
     return rcpp_result_gen;
 END_RCPP
 }

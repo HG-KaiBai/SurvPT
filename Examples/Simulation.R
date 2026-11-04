@@ -1,6 +1,6 @@
 # Historical large simulation: executes experiment loops when sourced.
 # See Examples/README.md; reduce replication/worker counts before a pilot run.
-# Requires SurvPT, survival, interval, and parallel; writes CSV output.
+# Requires SurvPT, survival, interval, and parallel; results remain in R.
 library(SurvPT)
 library(survival)
 library(interval)
@@ -31,10 +31,10 @@ simu <- function(t, n, K, Lambda, q, type){
   for (prior in c(1, 2)){
     start_time <- Sys.time()
     fit = survPT(data, prior = prior, prior_params = exp_par, EM_tol = 1e-4, verbose = T)
-    prediction = predict(fit, x, posterior = FALSE)
+    prediction = predict(fit, x, sample = FALSE)
     pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
     time = c(time, pt_time)
-    err = sum((prediction$Survival_Probs - true.surv)^2)
+    err = sum((prediction$estimate - true.surv)^2)
     sse = c(sse, err)
   }
 
@@ -57,17 +57,14 @@ simu <- function(t, n, K, Lambda, q, type){
 
 
 output <- function(R, n, K, Lambda, q, type){
-  num_cores <- 300
+  num_cores <- if (.Platform$OS.type == "windows") 1L else 2L
   result = mclapply(1:R, function(t) simu(t, n, K, Lambda, q, type), mc.cores = num_cores)
   result = do.call(rbind, result)
   colnames(result) =c("Uniform_PT", "Exp_PT", "NP", "Weibull", "Exp", "Uniform_PT_time", "Exp_PT_time",  "NP_time")
   result = rbind(result, colMeans(result))
   rownames(result) = c(seq(1:R), "Ave")
-  filename = paste0(type, n, "_k", K,"_lambda", Lambda, "_rate", q,".csv")
-  dirname = paste0("n", n)
-  dir.create(dirname, showWarnings = FALSE)
-  write.csv(result, file = file.path(dirname, filename), row.names = TRUE)
-  return(0)
+  print(tail(result, 1))
+  return(result)
 }
 
 # for (type in c("right", "current", "interval")){
@@ -78,10 +75,13 @@ output <- function(R, n, K, Lambda, q, type){
 #   }
 # }
 
+simulation_results <- list()
 for (type in c("right", "current", "interval")){
   for (q in c(0.3, 0.5)){
     message(type, q)
-    output(1000, 500, 1, 0.12, q, type)
-    output(1000, 500, 2, 0.12, q, type)
+    for (K in c(1, 2)) {
+      key <- paste(type, "n500", paste0("k", K), paste0("q", q), sep="_")
+      simulation_results[[key]] <- output(1000, 500, K, 0.12, q, type)
+    }
   }
 }

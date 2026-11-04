@@ -1,128 +1,122 @@
-#' Predict survival at target times, with optional posterior sampling
+#' Predict from a fitted Polya tree with posterior uncertainty
 #'
-#' `predict(fit, x, 0.95)` accepts a numeric vector of target times `x` and
-#' returns deterministic survival probabilities and posterior summaries at
-#' exactly those times. By default it runs DA-Gibbs during this call; prior
-#' sampling is not required. It never rebuilds the tree or refits MAP-EM.
+#' Evaluate the fitted MAP-EM distribution and optionally sample its posterior
+#' at specified times. The interface follows version 0.2.3, with a separate
+#' tail probability summary for the unspecified tail in version 0.4.0.
 #'
-#' @param object A model returned by \code{\link{survPT}()}.
-#' @param newdata Numeric vector of target event times, not a covariate matrix.
-#'   Unsorted and repeated times are allowed and their order is preserved.
-#'   If omitted, use 200 points on `[0,Tau]`.
-#' @param level Equal-tailed pointwise credible level, supplied as the third
-#'   positional argument in `predict(fit, x, 0.95)`.
-#' @param ... Reserved for future use; unused arguments raise an error.
-#' @param posterior Run posterior sampling and return posterior summaries
-#'   (default `TRUE`). Set `FALSE` for deterministic MAP predictions only.
-#' @param n_sweeps,burn_in,thin Sampler controls passed to \code{\link{samplePT}()}
-#'   when `posterior=TRUE` and no explicit `samples` are supplied.
-#' @param samples Optional result of \code{\link{samplePT}(object)}. When supplied,
-#'   reuse these draws without further sampling. Sampler controls are ignored.
-#' @param keep_draws Include evaluated curve draws and the underlying tree draws
-#'   in `Posterior$Draws` (default `FALSE`).
-#' @param verbose Print sampler progress.
+#' @param object A fitted model returned by \code{\link{survPT}()}.
+#' @param x Numeric vector of nonnegative evaluation times, in any order.
+#'   Duplicates and `Inf` are allowed; missing values are not. An empty vector
+#'   returns no curve rows but still provides the tail summary.
+#' @param level Pointwise credible interval probability, strictly between 0 and 1.
+#' @param sample Logical, default `TRUE`. Set `FALSE` for fitted estimates only.
+#' @param n_samples Number of posterior draws used for summaries, default 2000. Zero also
+#'   disables sampling.
+#' @param burn_in Number of initial Gibbs sweeps to discard, default 3000.
+#' @param thin Retain every `thin`-th sweep after burn-in, default 1.
+#' @param type Either `"survival"` (default) or `"density"`.
+#' @param ... Reserved for future arguments. Unrecognized arguments are rejected.
 #'
 #' @details
-#' Model fitting, posterior sampling and evaluation are independent operations.
-#' The default prediction call orchestrates sampling and evaluation on the
-#' requested time vector. The posterior on tree probabilities is independent of
-#' the prediction grid; each sampled tree is evaluated at the supplied times.
-#' There is no interpolation from a previously stored curve or implicit extra
-#' prediction grid. `set.seed()` controls fresh sampling.
+#' `estimate` is the fitted MAP-EM plug-in prediction. It is not the mode of the
+#' marginal posterior of survival or density. No refitting or tree rebuilding
+#' takes place during prediction. With `max_EM_iter=0`, the estimate evaluates
+#' the reference initialization. With `allocated=0`, only `sample=FALSE` (or
+#' `n_samples=0`) is supported.
 #'
-#' Every call with `posterior=TRUE, samples=NULL` runs a fresh chain starting
-#' from the stored MAP fit. To compare grids or credible levels using the same
-#' Monte Carlo draws, obtain `samples <- samplePT(fit)` and pass it explicitly.
-#' `posterior=FALSE` consumes no random draws. Neither mode mutates `object`.
+#' Each Gibbs sweep allocates censored observations to leaves with probabilities
+#' proportional to current leaf mass times conditional interval coverage.
+#' Exact-event labels are fixed. Integer counts are aggregated up the tree,
+#' then each left split is drawn from `Beta(alpha_left + count_left,
+#' alpha_right + count_right)`. Fractional fitted counts are not treated as
+#' observed counts. Draws are unrestricted, without MAP clipping. The stored
+#' prior is used, including Beta(1,1) when the fit used `flat=TRUE`.
 #'
-#' At times above `object$Tau`, including `Inf`, survival and density outputs
-#' and summaries are `NA`. The model specifies only the total tail probability.
-#' Credible intervals are pointwise and condition on the retained tree and
-#' fixed base parameters. The separate overlap-count fit (`allocated=0`)
-#' supports only `posterior=FALSE`.
+#' Each call starts from the fitted masses and runs `burn_in + n_samples*thin`
+#' sweeps. Retention starts at `burn_in + thin`. `set.seed()` controls sampling;
+#' `sample=FALSE` consumes no random draws. The input model is unchanged and
+#' remains usable after `saveRDS()` and `readRDS()`.
 #'
-#' @return A list with `Test_seq`, deterministic `Survival_Probs`, `Density`,
-#'   `Tail_Prob` and `Posterior`. With `posterior=FALSE`, `Posterior` is `NULL`.
-#'   Otherwise it contains `Survival` and `Density` data frames with one row per
-#'   target time and columns `time`, `mean`, `sd`, `lower`, `median`, `upper`,
-#'   `ess`, `mcse`; `Terminal_Probs` and `Tail` summaries; sampler `Settings`;
-#'   and optional `Draws`. These means are posterior means of probabilities
-#'   and densities, not mean event time. ESS/MCSE are approximate single-chain
-#'   diagnostics. The deterministic result is retained alongside the posterior.
-#' @importFrom stats predict
+#' Intervals are equal-tailed and pointwise, conditional on the retained tree
+#' and fixed centering parameters. Finite chains have Monte Carlo error;
+#' compare summaries across independent runs and longer chains to assess stability.
+#'
+#' At times above `object$Tau`, including `Inf`, curve estimates and posterior
+#' summaries are `NA`: the model specifies only total tail probability, with
+#' no shape inside the tail. `attr(result, "tail")` always reports this
+#' probability `S(Tau)`, even when `x` omits `Tau` or `type="density"`.
+#'
+#' @return A data frame with columns `x`, `estimate`, `lower`, `upper`, `mean`
+#'   and `median`, preserving the order of `x`. Without sampling, only `x` and
+#'   `estimate` are returned. Attributes record `type` and `sample`, plus
+#'   `level`, `n_samples`, `burn_in` and `thin` when sampling is enabled.
+#'   The `tail` attribute is a one-row data frame with the same columns:
+#'   `x` is `Tau`, `estimate` is `object$Tail_Prob`, and the remaining columns
+#'   summarize the posterior tail probability. Draws are used internally to
+#'   compute summaries and are not retained in the returned object.
+#' @seealso \code{\link{survPT}()}
 #' @export
+#' @importFrom stats predict
 #' @examples
 #' d <- data.frame(L=c(0,1,2,3), R=c(1,2,Inf,Inf))
-#' fit <- survPT(d, prior=1, max_M=3, verbose=FALSE)
-#' x <- c(0,0.5,1,2,3)
+#' fit <- survPT(d, max_M=3, verbose=FALSE)
 #' set.seed(42)
-#' p <- predict(fit, x, 0.95, n_sweeps=200, burn_in=50)
-#' p$Survival_Probs
-#' p$Posterior$Survival
-#' predict(fit, x, posterior=FALSE)$Survival_Probs
-predict.survPT <- function(object, newdata = NULL, level = 0.95, ...,
-                           posterior = TRUE, n_sweeps = 2000, burn_in = 500,
-                           thin = 1, samples = NULL, keep_draws = FALSE,
-                           verbose = FALSE) {
+#' p <- predict(fit, c(0,0.5,1,2,3), n_samples=200, burn_in=50)
+#' p
+#' attr(p, "tail")
+#' predict(fit, c(1,2), sample=FALSE)
+predict.survPT <- function(object, x, level = 0.95, sample = TRUE,
+                           n_samples = 2000L, burn_in = 3000L, thin = 1L,
+                           type = c("survival", "density"), ...) {
     pt_model(object)
-    if (length(list(...))) stop('Unused prediction arguments; supply target times as newdata and the credible level as level.')
-    if (is.null(newdata)) newdata <- seq(0,object$Tau,length.out=200)
-    pt_times(newdata)
-    pt_scalar(level,'level',0,1)
-    if (level<=0 || level>=1) stop('level must lie in (0,1).')
-    for (nm in c('posterior','keep_draws','verbose'))
-        if (!is.logical(get(nm)) || length(get(nm))!=1L || is.na(get(nm))) stop(nm,' must be TRUE or FALSE.')
-    if (!posterior && !is.null(samples)) stop('Use posterior=TRUE when supplying samples.')
-    if (posterior) {
-        if (is.null(samples)) samples <- samplePT(object,n_sweeps=n_sweeps,burn_in=burn_in,thin=thin,verbose=verbose)
-        else if (!inherits(samples,'survPT_samples') || !identical(samples$Model,object$Model))
-            stop('samples must come from samplePT() for this fitted model.')
-        leaf_draws <- samples$Terminal_Probs
-    } else leaf_draws <- matrix(numeric(),0L,0L)
-    out <- SurvPTPredict(object$Model,as.numeric(newdata),leaf_draws)
-    result <- list(Test_seq=newdata,Survival_Probs=out$survival_probs,
-                   Density=out$density_probs,Tail_Prob=object$Tail_Prob,Posterior=NULL)
-    if (posterior) {
-        result$Posterior <- list(
-            Survival=cbind(time=newdata,pt_draw_summary(out$survival_draws,level)),
-            Density=cbind(time=newdata,pt_draw_summary(out$density_draws,level)),
-            Terminal_Probs=cbind(node=object$Terminal_Nodes,pt_draw_summary(samples$Terminal_Probs,level)),
-            Tail=pt_draw_summary(matrix(samples$Tail,ncol=1),level),
-            Settings=c(samples$Settings,list(credible_level=level)))
-        if (keep_draws) result$Posterior$Draws <- list(
-            Survival=out$survival_draws,Density=out$density_draws,
-            Terminal_Probs=samples$Terminal_Probs,Branch_Probs=samples$Branch_Probs,
-            Tail=samples$Tail,Iterations=samples$Iterations)
+    if (length(list(...))) stop('Unused arguments in predict.survPT().')
+    if (!is.numeric(x) || is.complex(x) || !is.null(dim(x)) || anyNA(x) || any(x < 0))
+        stop('x must be a numeric vector of nonnegative times without missing values.')
+    pt_scalar(level, 'level', 0, 1)
+    if (level <= 0 || level >= 1) stop('level must lie in (0,1).')
+    if (!is.logical(sample) || length(sample) != 1L || is.na(sample))
+        stop('sample must be TRUE or FALSE.')
+    pt_scalar(n_samples, 'n_samples', 0, .Machine$integer.max, TRUE)
+    pt_scalar(burn_in, 'burn_in', 0, .Machine$integer.max, TRUE)
+    pt_scalar(thin, 'thin', 1, .Machine$integer.max, TRUE)
+    type <- match.arg(type)
+    sample <- sample && n_samples > 0L
+    if (sample && object$Model$allocated != 1L)
+        stop('DA-Gibbs requires allocated=1; use sample=FALSE for overlap-count fits.')
+
+    leaf_draws <- matrix(numeric(), 0L, 0L)
+    if (sample) {
+        draws <- SurvPTSample(object$Model, n_samples, burn_in, thin, FALSE)
+        leaf_draws <- draws$terminal_probs
     }
+    out <- SurvPTPredict(object$Model, as.numeric(x), leaf_draws)
+    estimate <- if (type == 'survival') out$survival_probs else out$density_probs
+    result <- data.frame(x=x, estimate=as.numeric(estimate))
+    tail <- data.frame(x=object$Tau, estimate=object$Tail_Prob)
+    if (sample) {
+        curve_draws <- if (type == 'survival') out$survival_draws else out$density_draws
+        tail_draws <- leaf_draws[, match(object$Tail_Node, object$Terminal_Nodes)]
+        result <- cbind(result, pt_prediction_summary(curve_draws, level))
+        tail <- cbind(tail, pt_prediction_summary(matrix(tail_draws, ncol=1L), level))
+        attr(result, 'level') <- level
+        attr(result, 'n_samples') <- n_samples
+        attr(result, 'burn_in') <- burn_in
+        attr(result, 'thin') <- thin
+    }
+    attr(result, 'type') <- type
+    attr(result, 'sample') <- sample
+    attr(result, 'tail') <- tail
     result
 }
 
-pt_times <- function(x) {
-    if (!is.numeric(x) || !is.null(dim(x)) || !length(x) || anyNA(x) || any(x<0))
-        stop('Prediction times must be a nonempty numeric vector of nonnegative, nonmissing target times.')
-    invisible(x)
-}
-
-pt_draw_summary <- function(draws, level) {
-    result <- lapply(seq_len(ncol(draws)),function(j) {
-        x <- draws[,j]; n <- length(x)
-        if (anyNA(x)) return(rep(NA_real_,7))
-        qs <- stats::quantile(x,c((1-level)/2,0.5,(1+level)/2),names=FALSE)
-        ess <- NA_real_
-        constant <- all(x == x[1])
-        s <- if (constant) 0 else stats::sd(x)
-        if (all(is.finite(x)) && n >= 4L) {
-            if (constant) ess <- n else {
-                ac <- as.numeric(stats::acf(x,lag.max=min(n-1L,1000L),plot=FALSE)$acf)[-1]
-                pairs <- ac[seq(1,length(ac)-1,by=2)] + ac[seq(2,length(ac),by=2)]
-                stop_at <- which(pairs <= 0)[1]
-                if (!is.na(stop_at)) pairs <- if (stop_at==1L) numeric() else pairs[seq_len(stop_at-1L)]
-                ess <- min(n,n/(1+2*sum(pairs)))
-            }
-        }
-        c(mean(x),s,qs,ess,s/sqrt(ess))
-    })
-    result <- as.data.frame(do.call(rbind,result))
-    names(result) <- c('mean','sd','lower','median','upper','ess','mcse')
+pt_prediction_summary <- function(draws, level) {
+    values <- vapply(seq_len(ncol(draws)), function(j) {
+        x <- draws[, j]
+        if (anyNA(x)) return(rep(NA_real_, 4L))
+        qs <- stats::quantile(x, c((1-level)/2, (1+level)/2, 0.5), names=FALSE)
+        c(qs[1:2], mean(x), qs[3])
+    }, numeric(4L))
+    result <- as.data.frame(t(values))
+    names(result) <- c('lower', 'upper', 'mean', 'median')
     result
 }

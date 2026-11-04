@@ -9,10 +9,10 @@ public:
     PT(const arma::mat& X, int prior, int max_depth, const arma::vec& parameters,
        int allocated, int max_iter, double tolerance, bool verbose,
        double gamma, double kappa, double s0, double min_count,
-       double epsilon, bool flat_init);
+       double epsilon, bool flat);
     PT(const Rcpp::List& state, bool verbose);
     void fit();
-    Rcpp::List sample(int sweeps, int burn_in, int thin);
+    Rcpp::List sample(int n_samples, int burn_in, int thin);
     Rcpp::List output() const;
     Rcpp::List state(const Rcpp::List& tree_output) const;
     Rcpp::List predict_at(const arma::vec& times, const arma::mat& leaf_draws);
@@ -31,12 +31,12 @@ private:
     arma::vec grid, parameters;
     int prior, max_depth, allocated, max_iter;
     double tolerance, gamma, kappa, s0, min_count, epsilon, tau, h_tau;
-    bool verbose, flat_init, cached = false, predictions_cached = false, coverage_prepared = false;
+    bool verbose, flat, cached = false, predictions_cached = false, coverage_prepared = false;
     std::vector<Node> nodes;
     std::vector<int> leaves, splits, exact_leaf;
     arma::mat log_coverage, survival_kernel, density_kernel;
     arma::vec mass, log_mass, counts, theta;
-    Stage flat_stage, map_stage;
+    Stage map_stage;
     double hazard(double t) const;
     double log_body_probability(double a, double b) const;
     double log_reference_probability(double a, double b) const;
@@ -53,9 +53,9 @@ private:
     void propagate();
     void aggregate(arma::vec& values) const;
     double allocate(arma::vec& values, bool draw_labels) const;
-    void update_splits(const arma::vec& values, bool flat);
-    double objective(double log_likelihood, bool flat) const;
-    Stage run_em(bool flat);
+    void update_splits(const arma::vec& values);
+    double objective(double log_likelihood) const;
+    Stage run_em();
     void predict(arma::vec& survival, arma::vec& density) const;
     Rcpp::List stage_output(const Stage& stage) const;
 };

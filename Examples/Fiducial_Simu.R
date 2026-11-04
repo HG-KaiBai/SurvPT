@@ -1,6 +1,5 @@
 # Historical large simulation; do not treat this as a turnkey example.
-# Executes loops and writes files. Its fiducial() calls need adaptation to the
-# current list return value. See Examples/README.md for dependencies and limits.
+# Executes loops and retains results in R. See Examples/README.md for dependencies.
 library(SurvPT)
 library(interval)
 library(parallel)
@@ -47,15 +46,15 @@ simu <- function(t, n, type){
   for (prior in c(1, 2)){
     start_time <- Sys.time()
     fit = survPT(data, prior = prior, prior_params = exp_par, EM_tol = 1e-6, verbose = T)
-    prediction = predict(fit, x, posterior = FALSE)
+    prediction = predict(fit, x, sample = FALSE)
     pt_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
     time = c(time, pt_time)
-    err = sum((prediction$Survival_Probs - true.surv)^2)
+    err = sum((prediction$estimate - true.surv)^2)
     sse = c(sse, err)
   }
 
   start_time <- Sys.time()
-  fiducial_surv = 1 - fiducial(data$L, data$R, n, grid, x)
+  fiducial_surv = 1 - fiducial(data$L, data$R, n, grid, x)$point_li
   fid_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
   time = c(time, fid_time)
   err = sum((fiducial_surv - true.surv)^2)
@@ -75,30 +74,29 @@ simu <- function(t, n, type){
 
 
 output <- function(R, n, type){
-  num_cores <- 300
+  num_cores <- if (.Platform$OS.type == "windows") 1L else 2L
   result = mclapply(1:R, function(t) simu(t, n, type), mc.cores = num_cores)
   result = do.call(rbind, result)
   # colnames(result) =c("Uniform_PT", "Exp_PT", "Fiducial", "NP", "Weibull", "Exp", "Uniform_PT_time", "Exp_PT_time",  "Fiducial_time")
   result = rbind(result, colMeans(result))
   # rownames(result) = c(seq(1:R), "Ave")
-  filename = paste0("Scenario_", type, "_n", n, ".csv")
-  dirname = paste0("Scenario_", type)
-  dir.create(file.path("fiducial", dirname), showWarnings = FALSE)
-  write.csv(result, file = file.path("fiducial", dirname, filename), row.names = TRUE)
-
-  sd = apply(result, 2, sd)
+  sd = apply(result[-nrow(result), , drop=FALSE], 2, sd)
   out = c(result[nrow(result), 1:6], sd[1:6])
   out = out[c(1,7,2,8,3,9,4,10,5,11,6,12)]
-  return(out)
+  print(out)
+  return(list(replications=result, summary=out))
 }
 
 
+ fiducial_results <- list()
  final = matrix(nrow=0, ncol= 6 * 2 * 4)
  for (n in c(50, 75, 100, 200, 500, 800, 1000)){
     type_ans = c()
     for (type in c(1,2,3,4)){
         message("S_", type, "_", n)
-        type_ans = c(type_ans, output(1000, n, type))
+        result <- output(1000, n, type)
+        fiducial_results[[paste(type,n,sep="_")]] <- result
+        type_ans = c(type_ans, result$summary)
     }
     final = rbind(final, type_ans)
 }
@@ -112,4 +110,4 @@ colnames(final) = c("S1_Unif_PT_SSE", "S1_Unif_PT_SD", "S1_Exp_PT_SSE", "S1_Exp_
                     "S4_Unif_PT_SSE", "S4_Unif_PT_SD", "S4_Exp_PT_SSE", "S4_Exp_PT_SD", "S4_Fiducial_SSE", "S4_Fiducial_SD" ,
                         "S4_NP_SSE", "S4_NP_SD", "S4_Weibull_SSE", "S4_Weibull_SD", "S4_Exp_SSE", "S4_Exp_SD")
 
-write.csv(final, file = file.path("fiducial","final_results.csv"), row.names = TRUE)
+print(final)

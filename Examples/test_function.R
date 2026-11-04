@@ -7,32 +7,38 @@ library(spBayesSurv)
 
 K = 1
 Lambda = 0.12
-n = 500
-#test_data = data_rc(seed = 12, n = n, K = K, Lambda = Lambda, q = 0.3)
-test_data = fiducial_3(123, n)
+n = 200
+test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
+#test_data = fiducial_3(321, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
 
 # PT predictions and the later comparisons use the same finite observation grid.
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
 x = seq(0, max(obs.mat), length.out = 201)
 true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
-#true.surv =  pgamma(x, 3, 1, lower.tail = FALSE)
+#true.surv =  pgamma(x, 2, 1, lower.tail = FALSE)
+true.density = dgamma(x, 2, 1)
 cat("Calling SurvPT with uniform prior...\n")
 fit_unif <- survPT(test_data, prior = 1,
                       max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
-result_unif <- predict(fit_unif, x, posterior = TRUE)
+result_unif <- predict(fit_unif, x, sample = FALSE)
 
 cat("Calling SurvPT with exponential prior...\n")
 fit_exp <- survPT(test_data, prior = 2, prior_params = exp_par,
                      max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
-result_exp <- predict(fit_exp, x, posterior = FALSE)
+result_exp <- predict(fit_exp, x, sample = FALSE)
+density_unif <- predict(fit_unif, x, type = "density", sample = FALSE)
+density_exp <- predict(fit_exp, x, type = "density", sample = FALSE)
+tail_probabilities <- rbind(Unif = attr(result_unif, "tail"),
+                            Exp = attr(result_exp, "tail"))
+print(tail_probabilities)
 
 # Retain the original survival SSE and probability-increment RMSE comparisons.
 pt_results <- list(Unif = result_unif, Exp = result_exp)
 pt_fits <- list(Unif = fit_unif, Exp = fit_exp)
 pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
   fit <- pt_fits[[method]]
-  survival <- as.numeric(pt_results[[method]]$Survival_Probs)
+  survival <- as.numeric(pt_results[[method]]$estimate)
   data.frame(
     Method = method,
     Terminal_Mass = sum(fit$Posterior_Probs[fit$Terminal_Nodes]),
@@ -45,9 +51,12 @@ print(pt_checks, row.names = FALSE)
 
 source("./Examples/bayes_helpers.R", local = TRUE)
 
-tryCatch({
+result_opt <- NULL
+# OPT's legacy interface requires exact events or right censoring.
+if (all(test_data$L == test_data$R | is.infinite(test_data$R))) tryCatch({
   cat("Calling SurvOPT with uniform prior...\n")
-  result_opt <- survOPT(test_data$L, test_data$status, test_seq = x, max_M = 8)
+  result_opt <- survOPT(test_data$L, as.integer(is.finite(test_data$R)),
+                        test_seq = x, max_M = 8)
 
   cat("Success! Result structure:\n")
   print(str(result_opt))
@@ -57,12 +66,14 @@ tryCatch({
   print(e)
 })
 
+if (!is.null(result_opt)) {
 for (l in 0:9){
   print(sum(result_opt$Posterior_Probs[result_opt$Level == l]))
 }
 print(sum(result_opt$Posterior_Probs[result_opt$Terminal_Nodes]))
+}
 
-grid = result_unif$Test_seq
+grid = result_unif$x
 #fid = fiducial(test_data$L, test_data$R, n = n, grid, grid)
 
 # Encode censoring for Surv(interval2), leaving test_data unchanged.
@@ -96,27 +107,32 @@ result_tbp$Survival_Probs[grid > 0] <- as.numeric(tbp_curves$Shat[, 1L])
 result_tbp$Density[grid > 0] <- as.numeric(tbp_curves$fhat[, 1L])
 
 kmf = icfit(test_data$L, test_data$R)
+plot_comparison <- function() {
 plot(kmf)
-lines(result_unif$Test_seq, result_unif$Survival_Probs, col = "blue", lwd = 2)
-lines(result_exp$Test_seq, result_exp$Survival_Probs, col = "orange", lwd = 2)
+lines(result_unif$x, result_unif$estimate, col = "blue", lwd = 2)
+lines(result_exp$x, result_exp$estimate, col = "orange", lwd = 2)
 #lines(result_opt$Test_seq, result_opt$Survival_Probs, col = "green", lwd = 2)
-lines(result_unif$Test_seq, 1-pweibull(result_unif$Test_seq, K, 1/Lambda), col = "red", lwd = 2)
+lines(result_unif$x, true.surv, col = "red", lwd = 2)
 #lines(grid, 1 - fid$point_li, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Survival_Probs, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Survival_Probs, col = "cyan4", lwd = 2)
-legend("topright", legend = c("Kaplan-Meier", "SurvPT Unif", "SurvPT Exp", "OPT", "True Survival", "Fiducial", "MPT", "TBP"),
-       col = c("black", "blue","orange", "green" ,"red", "purple", "brown", "cyan4"), lwd = 2)
+legend("topright", legend = c("NPMLE", "SurvPT Unif", "SurvPT Exp", "True Survival", "MPT", "TBP"),
+       col = c("black", "blue", "orange", "red", "brown", "cyan4"), lwd = 2)
 
 
-plot(result_unif$Test_seq, dweibull(result_unif$Test_seq, K, 1/Lambda), type = "l", col = "red", lwd = 2)
-lines(result_unif$Test_seq, result_unif$Density, col = "blue", lwd = 2)
-lines(result_exp$Test_seq, result_exp$Density, col = "orange", lwd = 2)
-lines(result_opt$Test_seq, result_opt$Density, col = "green", lwd = 2)
+plot(result_unif$x, true.density, type = "l", col = "red", lwd = 2)
+lines(result_unif$x, density_unif$estimate, col = "blue", lwd = 2)
+lines(result_exp$x, density_exp$estimate, col = "orange", lwd = 2)
+if (!is.null(result_opt)) lines(result_opt$Test_seq, result_opt$Density, col = "green", lwd = 2)
 #lines(grid, fid$density, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Density, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Density, col = "cyan4", lwd = 2)
-legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "OPT", "Fiducial", "MPT", "TBP"),
-       col = c("red", "blue", "orange", "green", "purple", "brown", "cyan4"), lwd = 2)
+legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "MPT", "TBP",
+                             if (!is.null(result_opt)) "OPT"),
+       col = c("red", "blue", "orange", "brown", "cyan4",
+               if (!is.null(result_opt)) "green"), lwd = 2)
+}
+if (interactive()) plot_comparison()
 
 
 

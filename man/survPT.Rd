@@ -18,7 +18,7 @@ survPT(
   s0 = NULL,
   min_count = 1,
   split_epsilon = 1e-06,
-  flat_init = TRUE
+  flat = FALSE
 )
 }
 \arguments{
@@ -39,9 +39,9 @@ Uniform ignores this argument; Weibull requires explicit parameters.}
 \item{allocated}{\code{1} for MAP-EM; \code{0} retains the historical overlap-count
 estimator, with the new partition and priors, without EM or sampling.}
 
-\item{max_EM_iter}{Iteration cap for each of the flat-prior and working-prior
-stages (default 2000). Zero returns the reference distribution and its
-allocations, without fitting either stage.}
+\item{max_EM_iter}{Iteration cap for the single MAP-EM fit (default 2000).
+Zero returns the reference distribution and its allocations without EM
+when \code{allocated=1}.}
 
 \item{EM_tol}{Stopping tolerance for the Euclidean change in leaf masses.}
 
@@ -62,11 +62,15 @@ body density. For uniform centering this is \code{kappa/(1+kappa)}.}
 \item{min_count}{Minimum reference expected count for ordinary splitting,
 default 1. Zero disables count-based pruning. The tail is always separated.}
 
-\item{split_epsilon}{MAP-only probability bound, default \code{1e-6}.
-The Gibbs sampler uses unrestricted Beta draws.}
+\item{split_epsilon}{Base scale for the MAP-only probability bound, default
+\code{1e-6}. Each child at level \code{m} uses bounds
+\verb{[split_epsilon * 2^(-m), 1 - split_epsilon * 2^(-m)]}, including the
+final tail split. Root level is zero. The Gibbs sampler uses unrestricted
+Beta draws.}
 
-\item{flat_init}{First fit the flat-prior model, then use it to initialize
-the working-prior MAP-EM (default \code{TRUE}).}
+\item{flat}{Use Beta(1,1) at every split for both fitting and posterior
+sampling (default \code{FALSE}). Overrides \code{gamma} when \code{TRUE}, without changing
+the centering distribution or partition. There is no preliminary fit.}
 }
 \value{
 A serializable S3 model of class \code{survPT}, containing \code{Left}, \code{Right},
@@ -81,10 +85,10 @@ probabilities. Root parents and absent children are \code{NA}.}
 Reference masses, shares and expected counts used to build the tree.}
 \item{Tau, Tail_Node, Tail_Prob}{Largest finite endpoint, tail index and
 fitted tail probability.}
-\item{Prior}{Centering parameters, gamma, kappa, reference \code{s0}, and
+\item{Prior}{Centering parameters, gamma, flat, kappa, reference \code{s0}, and
 \code{tail_mean}, the actual induced Beta-prior mean after parameter flooring.}
-\item{Convergence}{Flat and MAP stage iteration counts, convergence flags,
-final changes, and log posterior kernels omitting constants independent
+\item{Convergence}{The single \code{map} fit's iteration count, convergence flag,
+final change, and log posterior kernel omitting constants independent
 of the branch probabilities. A cap does not imply convergence.}
 \item{Model}{Internal plain-R fitted state, including training intervals,
 retained tree and fitted probabilities. It supports prediction and
@@ -94,14 +98,15 @@ sampling after \code{saveRDS()} and \code{readRDS()}; do not edit it manually.}
 \description{
 Fit the deterministic MAP-EM model independently of prediction times and
 posterior sampling. Use \code{predict(fit, times, 0.95)} to run sampling and obtain
-survival predictions and credible intervals at target times. Use
-\code{\link{samplePT}()} for standalone posterior sampling.
+survival predictions, credible intervals and tail probability summaries.
 }
 \details{
 The support is fixed at \verb{[0, Inf]}. Ordinary cuts are medians of the centering
 distribution on the node's intersection with \verb{[0,tau]}. The rightmost leaf is split at \code{tau}, producing
 a separate tail leaf. Initial expected counts under the reference measure
 \code{(1-s0)*P0 + s0*tail} determine pruning. The resulting tree stays fixed.
+Allocation starts from this reference distribution and a single MAP-EM fit
+uses the selected prior throughout. \code{flat=TRUE} is equivalent to \code{gamma=0}.
 
 Each EM E-step uses leaf masses times conditional body probabilities, or a
 tail factor of one for right censoring and zero otherwise. Each M-step uses
@@ -123,11 +128,10 @@ sum(fit$Posterior_Probs[fit$Terminal_Nodes])
 fit$Tail_Prob
 set.seed(42)
 predicted <- predict(fit, c(0,0.5,1,2,3), 0.95,
-                     n_sweeps=200, burn_in=50)
-predicted$Survival_Probs
-predicted$Posterior$Survival
+                     n_samples=200, burn_in=50)
+predicted
+attr(predicted, "tail")
 }
 \seealso{
-\code{\link{predict.survPT}()}, \code{\link{samplePT}()},
-\code{\link{estimate_exp}()}, \code{\link{SurvPT}()}
+\code{\link{predict.survPT}()}, \code{\link{estimate_exp}()}
 }

@@ -12,7 +12,7 @@
 #' estimates. Use `citation("SurvPT")` for the software reference.
 #' Model fitting is independent of the prediction grid: call
 #' `predict(fit, times, 0.95)` to run posterior sampling and prediction at the
-#' requested times. `samplePT()` also exposes standalone sampling.
+#' requested times, with a separate tail probability summary.
 #'
 #' SurvPT is distributed under the MIT license. It provides deterministic
 #' MAP-EM fits and optional DA-Gibbs posterior means and pointwise credible
