@@ -5,12 +5,14 @@ devtools::load_all(".", compile = TRUE)
 library(interval)
 library(spBayesSurv)
 
-K = 1
+K = 2
 Lambda = 0.12
 n = 200
 test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
 #test_data = fiducial_3(321, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
+# Weibull parameters are c(lambda, shape), with scale = 1 / lambda.
+weibull_par = estimate(test_data$L, test_data$R)
 
 # PT predictions and the later comparisons use the same finite observation grid.
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
@@ -27,15 +29,23 @@ cat("Calling SurvPT with exponential prior...\n")
 fit_exp <- survPT(test_data, prior = 2, prior_params = exp_par,
                      max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
 result_exp <- predict(fit_exp, x, sample = FALSE)
+
+cat("Calling SurvPT with Weibull prior...\n")
+fit_weibull <- survPT(test_data, prior = 3, prior_params = weibull_par,
+                         max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)
+result_weibull <- predict(fit_weibull, x, sample = FALSE)
+
 density_unif <- predict(fit_unif, x, type = "density", sample = FALSE)
 density_exp <- predict(fit_exp, x, type = "density", sample = FALSE)
+density_weibull <- predict(fit_weibull, x, type = "density", sample = FALSE)
 tail_probabilities <- rbind(Unif = attr(result_unif, "tail"),
-                            Exp = attr(result_exp, "tail"))
+                            Exp = attr(result_exp, "tail"),
+                            Weibull = attr(result_weibull, "tail"))
 print(tail_probabilities)
 
 # Retain the original survival SSE and probability-increment RMSE comparisons.
-pt_results <- list(Unif = result_unif, Exp = result_exp)
-pt_fits <- list(Unif = fit_unif, Exp = fit_exp)
+pt_results <- list(Unif = result_unif, Exp = result_exp, Weibull = result_weibull)
+pt_fits <- list(Unif = fit_unif, Exp = fit_exp, Weibull = fit_weibull)
 pt_checks <- do.call(rbind, lapply(names(pt_results), function(method) {
   fit <- pt_fits[[method]]
   survival <- as.numeric(pt_results[[method]]$estimate)
@@ -111,25 +121,29 @@ plot_comparison <- function() {
 plot(kmf)
 lines(result_unif$x, result_unif$estimate, col = "blue", lwd = 2)
 lines(result_exp$x, result_exp$estimate, col = "orange", lwd = 2)
+lines(result_weibull$x, result_weibull$estimate, col = "purple", lwd = 2)
 #lines(result_opt$Test_seq, result_opt$Survival_Probs, col = "green", lwd = 2)
 lines(result_unif$x, true.surv, col = "red", lwd = 2)
 #lines(grid, 1 - fid$point_li, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Survival_Probs, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Survival_Probs, col = "cyan4", lwd = 2)
-legend("topright", legend = c("NPMLE", "SurvPT Unif", "SurvPT Exp", "True Survival", "MPT", "TBP"),
-       col = c("black", "blue", "orange", "red", "brown", "cyan4"), lwd = 2)
+legend("topright", legend = c("NPMLE", "SurvPT Unif", "SurvPT Exp", "SurvPT Weibull",
+                             "True Survival", "MPT", "TBP"),
+       col = c("black", "blue", "orange", "purple", "red", "brown", "cyan4"), lwd = 2)
 
 
 plot(result_unif$x, true.density, type = "l", col = "red", lwd = 2)
 lines(result_unif$x, density_unif$estimate, col = "blue", lwd = 2)
 lines(result_exp$x, density_exp$estimate, col = "orange", lwd = 2)
+lines(result_weibull$x, density_weibull$estimate, col = "purple", lwd = 2)
 if (!is.null(result_opt)) lines(result_opt$Test_seq, result_opt$Density, col = "green", lwd = 2)
 #lines(grid, fid$density, col = "purple", lwd = 2)
 lines(result_mpt$Test_seq, result_mpt$Density, col = "brown", lwd = 2)
 lines(result_tbp$Test_seq, result_tbp$Density, col = "cyan4", lwd = 2)
-legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "MPT", "TBP",
+legend("topright", legend = c("True Density", "SurvPT Unif", "SurvPT Exp", "SurvPT Weibull",
+                             "MPT", "TBP",
                              if (!is.null(result_opt)) "OPT"),
-       col = c("red", "blue", "orange", "brown", "cyan4",
+       col = c("red", "blue", "orange", "purple", "brown", "cyan4",
                if (!is.null(result_opt)) "green"), lwd = 2)
 }
 if (interactive()) plot_comparison()
