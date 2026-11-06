@@ -35,10 +35,22 @@ max_EM_iter <- 2000L
 flat <- FALSE
 
 test_data <- data_rc(seed = data_seed, n = n, K = K, Lambda = Lambda, q = 0.3)
+# Optional mixture: 0.5 * Weibull(shape = 5, scale = 1) +
+#                   0.5 * Weibull(shape = 5, scale = 4.5); K/Lambda do not apply.
+# Use a build containing data_mixture(), or run devtools::load_all(".") before
+# sourcing this script. Uncomment ONE call below and the mixture truth below.
+# All three types use non-informative censoring, with q = P(C < T).
+# test_data <- data_mixture(seed = data_seed, n = n, type = "right", q = 0.3)
+# test_data <- data_mixture(seed = data_seed, n = n, type = "interval", q = 0.3)
+# test_data <- data_mixture(seed = data_seed, n = n, type = "current", q = 0.3)
+# Fit using L/R: status indicates exact events, not event-by-inspection status.
 exp_par <- estimate_exp(test_data$L, test_data$R)
 endpoints <- as.matrix(test_data[, c("L", "R")])
 x <- seq(0, max(endpoints[is.finite(endpoints)]), length.out = 201L)
 true_survival <- stats::pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
+# Matching truth for data_mixture(): uncomment both continuation lines.
+# true_survival <- 0.5 * stats::pweibull(x, 5, 1, lower.tail = FALSE) +
+#                  0.5 * stats::pweibull(x, 5, 4.5, lower.tail = FALSE)
 
 source("Examples/bayes_helpers.R", local = TRUE)
 

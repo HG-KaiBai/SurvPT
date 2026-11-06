@@ -3,6 +3,7 @@
 S3method(predict,survPT)
 export(data_cs)
 export(data_ic)
+export(data_mixture)
 export(data_rc)
 export(estimate)
 export(estimate_exp)

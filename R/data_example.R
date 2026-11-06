@@ -133,6 +133,95 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
 
 
 
+#' Simulate a Weibull mixture with non-informative censoring
+#'
+#' Generate event times with density
+#' `0.5 * dweibull(x, 5, 1) + 0.5 * dweibull(x, 5, 4.5)` under right,
+#' interval, or current-status censoring. Censoring and inspection schedules
+#' are independent of the event time and its mixture component.
+#'
+#' @inheritParams data_rc
+#' @param type Censoring type: `"right"`, `"interval"`, or `"current"`.
+#' @details Each event independently selects Weibull scale 1 or 4.5 with equal
+#'   probability; both components have shape 5. Independent censoring times
+#'   have Weibull shape 5 and a common scale `c`, chosen to satisfy
+#'   `0.5 / (1 + c^5) + 0.5 / (1 + (c / 4.5)^5) = q`.
+#'   Thus `q = P(C < T)` is the probability of a right-open interval for all
+#'   three types, not the total probability of a non-exact observation.
+#'
+#'   For `type = "interval"`, each subject has `rnbinom(1, size = 3,
+#'   prob = 0.25)` inspections uniform on `(0, C)`, plus a final inspection at
+#'   `C`. The count and schedule are generated independently of the event.
+#'   A zero count leaves only the final inspection. For `type = "current"`,
+#'   the only inspection is at `C`.
+#'
+#'   The true survival function is
+#'   `0.5 * pweibull(x, 5, 1, lower.tail = FALSE) +
+#'   0.5 * pweibull(x, 5, 4.5, lower.tail = FALSE)`.
+#' @return A data frame with `n` rows and columns `L`, `R`, and `status`.
+#'   `status` is the exact-event indicator `as.numeric(L == R)` and is zero
+#'   for interval and current-status observations. Right-open intervals have
+#'   `R = Inf`. Current-status output also includes `time`, the inspection
+#'   time, before `status`; its event-by-inspection indicator is
+#'   `as.integer(is.finite(R))`. Fit all types using `L` and `R`.
+#' @seealso \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{data_cs}()}
+#' @export
+#'
+#' @examples
+#' right <- data_mixture(seed = 123, n = 100, type = "right", q = 0.3)
+#' interval <- data_mixture(seed = 123, n = 100, type = "interval", q = 0.3)
+#' current <- data_mixture(seed = 123, n = 100, type = "current", q = 0.3)
+#' head(interval)
+data_mixture <- function(seed, n, type = c("right", "interval", "current"),
+                         q = 0.3) {
+  type <- match.arg(type)
+  if (!is.numeric(n) || length(n) != 1L || !is.finite(n) ||
+      n < 1 || n != floor(n)) {
+    stop("n must be a positive integer.")
+  }
+  if (!is.numeric(q) || length(q) != 1L || !is.finite(q) || q <= 0 || q >= 1) {
+    stop("q must be a number strictly between 0 and 1.")
+  }
+
+  scales <- c(1, 4.5)
+  # Solve on the log scale to avoid overflow for extreme censoring targets.
+  log_scale_bounds <- log(scales) + (log1p(-q) - log(q)) / 5
+  log_censor_scale <- stats::uniroot(function(log_scale) {
+    mean(stats::plogis(5 * (log(scales) - log_scale))) - q
+  }, interval = log_scale_bounds, tol = 1e-10)$root
+
+  set.seed(seed)
+  event_scale <- sample(scales, n, replace = TRUE)
+  T <- rweibull(n, shape = 5, scale = event_scale)
+  C <- rweibull(n, shape = 5, scale = exp(log_censor_scale))
+
+  if (type == "right") {
+    L <- pmin(T, C)
+    R <- ifelse(T < C, T, Inf)
+  } else if (type == "current") {
+    L <- ifelse(T < C, 0, C)
+    R <- ifelse(T < C, C, Inf)
+  } else {
+    L <- numeric(n)
+    R <- rep(Inf, n)
+    counts <- rnbinom(n, size = 3, prob = 0.25)
+    for (i in seq_len(n)) {
+      inspections <- c(runif(counts[i], min = 0, max = C[i]), C[i])
+      before <- inspections < T[i]
+      L[i] <- max(c(0, inspections[before]))
+      if (any(!before)) {
+        R[i] <- min(inspections[!before])
+      }
+    }
+  }
+
+  if (type == "current") {
+    return(data.frame(L = L, R = R, time = C, status = as.numeric(L == R)))
+  }
+  data.frame(L = L, R = R, status = as.numeric(L == R))
+}
+
+
 #' Generate fiducial-comparison scenario 1: exponential current status
 #'
 #' Generate current-status intervals from independent rate-one exponential
