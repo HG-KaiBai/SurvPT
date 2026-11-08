@@ -7,12 +7,12 @@ library(spBayesSurv)
 
 K = 2
 Lambda = 0.12
-n = 500
+n = 50
 #test_data = data_rc(seed = 123, n = n, K = K, Lambda = Lambda, q = 0.3)
-test_data = data_mixture(seed = 123, n = n, type = "right", q = 0.3)
+#test_data = data_mixture(seed = 123, n = n, type = "right", q = 0.5)
 # test_data = data_mixture(seed = 123, n = n, type = "interval", q = 0.3)
 # test_data = data_mixture(seed = 123, n = n, type = "current", q = 0.3)
-#test_data = fiducial_3(321, n)
+test_data = fiducial_3(212, n)
 exp_par = estimate_exp(test_data$L, test_data$R)
 # Weibull parameters are c(lambda, shape), with scale = 1 / lambda.
 weibull_par = estimate(test_data$L, test_data$R)
@@ -21,10 +21,10 @@ weibull_par = estimate(test_data$L, test_data$R)
 obs.mat = c(test_data$L[is.finite(test_data$L)], test_data$R[is.finite(test_data$R)])
 x = seq(0, max(obs.mat), length.out = 201)
 #true.surv = pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
-#true.surv =  pgamma(x, 2, 1, lower.tail = FALSE)
+true.surv =  pgamma(x, 2, 1, lower.tail = FALSE)
 true.density = dgamma(x, 2, 1)
-true.surv = 0.5 * pweibull(x, 5, 1, lower.tail = FALSE) + 0.5 * pweibull(x, 5, 4.5, lower.tail = FALSE)
-# true.density = 0.5 * dweibull(x, 5, 1) + 0.5 * dweibull(x, 5, 4.5)
+#true.surv = 0.5 * pweibull(x, 3, 3, lower.tail = FALSE) + 0.5 * pweibull(x, 4, 10, lower.tail = FALSE)
+# true.density = 0.5 * dweibull(x, 3, 3) + 0.5 * dweibull(x, 4, 10)
 cat("Calling SurvPT with uniform prior...\n")
 fit_unif <- survPT(test_data, prior = 1,
                       max_M = 8, max_EM_iter = 2000, EM_tol = 1e-6)

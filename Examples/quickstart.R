@@ -1,4 +1,4 @@
-# SurvPT 0.4.1: fit models, then predict on a target-time vector.
+# SurvPT 0.4.2: fit models, then predict on a target-time vector.
 # Run from a checkout: Rscript Examples/quickstart.R
 # No files are written; the fitted objects remain available when sourced.
 library(SurvPT)
@@ -45,8 +45,8 @@ tail_predictions <- lapply(fits, function(fit) {
 })
 for (name in names(fits)) {
   fit <- fits[[name]]
-  stopifnot(max(abs(tail_predictions[[name]]$estimate -
-                    c(fit$Tail_Prob,fit$Tail_Prob^1.5,fit$Tail_Prob^2,0))) < 1e-10)
+  stopifnot(abs(tail_predictions[[name]]$estimate[1]-fit$Tail_Prob) < 1e-10,
+            all(is.na(tail_predictions[[name]]$estimate[-1])))
 }
 print(tail_predictions)
 

@@ -33,11 +33,36 @@ censored-data MLE once. All-right-censored data require an explicit rate.
 For Weibull centering, use `prior=3, prior_params=c(rate,shape)` with scale `1/rate`.
 
 Every family uses `[0,Inf]`, a body ending at the largest finite endpoint `Tau`,
-and one tail whose shape is unspecified during fitting. Prediction extends
-above `Tau` with an exponential shape: for tail mass `p`, the rate is
-`-log(p)/Tau`, giving `S(x)=p^(x/Tau)` and `f(x)=(-log(p)/Tau)*S(x)`.
-At `Inf` both curves are zero. This is an output assumption, not a fitted cure
-fraction or an estimate of the tail shape from observed tail event times.
+and one tail whose shape is unspecified. For times above `Tau`, including `Inf`,
+survival and density estimates and all posterior summary columns are `NA`.
+At `Tau`, survival equals the fitted or sampled tail mass; density retains
+the body endpoint convention.
+
+## Generated data and population truth
+
+`data_rc()`, `data_ic()`, `data_cs()`, `data_mixture()` and `fiducial_1()` through
+`fiducial_4()` return their usual data frames with two scalar attributes and a
+named proportion vector:
+
+```r
+d <- data_mixture(seed=123, n=200, type="interval", q=0.5)
+c(tau=attr(d,"tau"), true_S_tau=attr(d,"true_S_tau"))
+attr(d,"censoring_proportions")
+```
+
+`tau` is the largest finite endpoint among `L` and `R`. `true_S_tau` is the
+survival probability from the generating population distribution at that time;
+it is not a fitted estimate. `censoring_proportions` contains the observed
+proportions in the fixed order `Exact`, `Left`, `Interval`, `Right`:
+
+- `Exact`: finite `L == R`.
+- `Left`: `L == 0 < R < Inf`.
+- `Interval`: `0 < L < R < Inf`.
+- `Right`: `R == Inf`, including `(0, Inf)`.
+
+Classification uses only the endpoints and the four proportions sum to one.
+The attributes describe the original generated dataset and are not recomputed
+when rows or endpoints are changed.
 
 ## Select the prior
 
@@ -77,7 +102,7 @@ head(pred)                     # x, estimate, lower, upper, mean, median
 attr(pred,"tail")              # same columns, for S(Tau)
 density <- predict(fit,x,type="density",sample=FALSE)
 tail_curve <- predict(fit,c(fit$Tau,2*fit$Tau,Inf),sample=FALSE)
-# estimates: fit$Tail_Prob, fit$Tail_Prob^2, 0
+# estimates: fit$Tail_Prob, NA, NA
 ```
 
 The prediction interface follows 0.2.3. `estimate` is the fitted MAP-EM plug-in
@@ -85,12 +110,9 @@ curve. `mean` and `median` summarize its posterior; they are not mean or median
 event times. `lower` and `upper` are pointwise equal-tailed credible limits.
 For density predictions, the separate `tail` attribute still reports a probability.
 It is available even when the target grid omits `Tau`, or when `x=numeric()`.
-Each posterior draw uses its own tail mass and corresponding exponential rate
-before the curve summaries are computed. In particular, posterior mean survival
-at `2*Tau` is the mean of squared tail masses, not the square of their mean.
-The extrapolated density integrates to the same fitted or sampled tail mass.
-Survival is continuous at `Tau`; density retains the body value there and may
-jump to the exponential tail density immediately afterwards.
+No curve is evaluated beyond `Tau`. Rows for these times remain in the output,
+with `NA` in `estimate`, `lower`, `upper`, `mean` and `median`. The separate
+tail summary remains available even when all requested times exceed `Tau`.
 
 The defaults use `n_samples=2000` draws after `burn_in=3000` sweeps, with
 `thin=1`. The total is `burn_in+n_samples*thin`; the first retained sweep is

@@ -4,10 +4,9 @@
 
 ## Interpretation
 
-- Fitting estimates only tail mass `S(tau)`. Prediction adds an exponential
-  shape with rate `-log(p)/tau` for each fitted or sampled mass `p`. Outputs
-  beyond `tau` depend on this assumption; the data do not identify the tail
-  shape. Rate uncertainty is induced by the mass draws, not separately sampled.
+- Fitting estimates only tail mass `S(tau)`. The tail shape is unspecified.
+  Survival and density predictions and all posterior summaries beyond `tau`,
+  including `Inf`, are `NA`.
 - DA-Gibbs targets the posterior on the retained tree with fixed base
   parameters. It does not integrate over tree selection or uncertainty in an
   estimated body-centering rate. The Weibull body center is a software extension
@@ -34,8 +33,8 @@ initialization and tails. Old numerical results are not expected to be reproduce
 It preserves deterministic result names and provides posterior summaries
 separately. Exponential and Weibull no longer extrapolate a parametric tail;
 uniform no longer treats the tail as an atom at infinity.
-Version 0.4.1 adds a prediction-only exponential tail matched to the fitted or
-sampled mass, while retaining the unspecified tail in fitting.
+Version 0.4.2 returns `NA` for all survival and density predictions beyond `tau`,
+while retaining separate fitted and posterior summaries of `S(tau)`.
 
 Version 0.3.2 makes `survPT()` exclusively fit-only. Use
 `predict(fit,times,level)` for curves and uncertainty: it runs sampling during
@@ -54,10 +53,9 @@ is maximized at infinite rate, require an explicit positive `prior_params` when
 using exponential centering. The automatic estimator no longer uses an arbitrary
 rate floor of 0.001.
 
-**Predictions beyond the data:** exponential extrapolation preserves the fitted
-or sampled tail mass. For `x>tau`, it uses `S(x)=p^(x/tau)`. Survival and density
-at `Inf` are zero; `attr(prediction,"tail")` still reports `S(tau)`. A mass of
-exactly one cannot determine a positive matching rate and raises an error.
+**Predictions beyond the data:** for `x>tau`, including `Inf`, survival and
+density estimates and posterior summaries are `NA`.
+`attr(prediction,"tail")` still reports `S(tau)` and its posterior summaries.
 
 **Slow or large runs:** lower tree depth, raise `min_count`, reduce grid size, or
 use fewer draws. Prediction returns summaries only, but temporarily stores
@@ -72,12 +70,10 @@ Build dependencies are described in [Installation](installation.md).
 
 - `data_cs()` sets `status` using `L==R`; fit its interval columns rather than
   treating that field as the event-by-inspection indicator.
-- `data_ic()` retains its historical `1:Ri` inspection loop, which needs care
-  when `Ri=0`.
 - The Weibull `estimate()` helper retains its existing numerical optimization;
   it returns only parameters and requires separate diagnostic assessment.
 - Several scripts launch large experiments. Start from `Examples/quickstart.R`
   and `Examples/posterior.R`. Results stay in R; plots display interactively.
-  Grid points beyond each fit's `tau` use the exponential extrapolation.
+  Grid points beyond each fit's `tau` return `NA`.
 
-Run `tests/pt-exponential-tail.R` for tail prediction checks.
+Run `tests/pt-tail-na.R` for tail prediction checks.

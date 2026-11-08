@@ -37,6 +37,25 @@ positive inspection times, recover that indicator with
 \code{as.integer(L == 0 & is.finite(R))}. Current-status data must be fitted via
 interval endpoints in \code{\link{survPT}()}.
 }
+\section{Simulation truth}{
+
+All data generators attach two scalar attributes: \code{attr(d, "tau")} is the
+largest finite endpoint among \code{L} and \code{R}, and \code{attr(d, "true_S_tau")} is
+the true population survival probability at that time. These are computed
+for the generated dataset, not estimated from it.
+
+\code{attr(d, "censoring_proportions")} is a named numeric vector in the order
+\code{Exact}, \code{Left}, \code{Interval}, \code{Right}, containing the observed proportions
+of each type. Classification uses only \code{L} and \code{R}: exact events have
+finite \code{L == R}; left censoring has \verb{L == 0 < R < Inf}; finite intervals
+have \verb{0 < L < R < Inf}; right censoring has \code{R == Inf}, including \verb{(0, Inf)}.
+These mutually exclusive proportions sum to one for a nonempty dataset.
+
+The attributes do not add columns or change observations. Subsetting or
+modifying the data does not recompute them; recalculate them for the
+modified dataset.
+}
+
 \examples{
 d <- data_cs(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
 observed_by_inspection <- as.integer(d$L == 0 & is.finite(d$R))

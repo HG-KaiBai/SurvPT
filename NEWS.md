@@ -1,3 +1,20 @@
+# SurvPT 0.4.2
+
+- Adds scalar `tau` and `true_S_tau` attributes to all data-generator outputs,
+  recording the largest finite L/R endpoint and its true population survival
+  probability, plus a named `censoring_proportions` vector in the order Exact,
+  Left, Interval, Right, while preserving the existing data columns.
+- Updates `data_mixture()` to an equal mixture of Weibull(shape=3, scale=3)
+  and Weibull(shape=4, scale=10), with independent uniform censoring calibrated
+  to `q`. Adds tail-coverage checks for seeds 1--1000, n=200/500 and q=0.3/0.5,
+  and synchronizes the mixture truth in examples and documentation.
+- Fixes zero intermediate inspection counts in `data_ic()` so that an event
+  before censoring is recorded as `(0, C]` without drawing extra inspections.
+- Removes prediction-only exponential tail extrapolation: survival, density
+  and posterior summaries for `x > Tau`, including `Inf`, are `NA`. The separate
+  `tail` attribute continues to summarize `S(Tau)`.
+- Updates generator, prediction and example documentation and regression tests.
+
 # SurvPT 0.4.1
 
 - Keeps the infinite support, separate unspecified tail, reference-based

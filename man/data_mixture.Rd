@@ -28,15 +28,16 @@ time, before \code{status}; its event-by-inspection indicator is
 }
 \description{
 Generate event times with density
-\code{0.5 * dweibull(x, 5, 1) + 0.5 * dweibull(x, 5, 4.5)} under right,
+\code{0.5 * dweibull(x, 3, 3) + 0.5 * dweibull(x, 4, 10)} under right,
 interval, or current-status censoring. Censoring and inspection schedules
 are independent of the event time and its mixture component.
 }
 \details{
-Each event independently selects Weibull scale 1 or 4.5 with equal
-probability; both components have shape 5. Independent censoring times
-have Weibull shape 5 and a common scale \code{c}, chosen to satisfy
-\code{0.5 / (1 + c^5) + 0.5 / (1 + (c / 4.5)^5) = q}.
+Each event independently selects Weibull \verb{(shape = 3, scale = 3)}
+or \verb{(shape = 4, scale = 10)} with equal probability. The mixture density
+has modes near 2.645 and 9.306. Independent censoring times are uniform on \verb{(0, c)},
+where \code{c} is calibrated so that the average of the true survival function
+over \verb{(0, c)} equals \code{q}.
 Thus \code{q = P(C < T)} is the probability of a right-open interval for all
 three types, not the total probability of a non-exact observation.
 
@@ -46,13 +47,38 @@ A zero count leaves only the final inspection. For \code{type = "current"},
 the only inspection is at \code{C}.
 
 The true survival function is
-\code{0.5 * pweibull(x, 5, 1, lower.tail = FALSE) + 0.5 * pweibull(x, 5, 4.5, lower.tail = FALSE)}.
+\code{0.5 * pweibull(x, 3, 3, lower.tail = FALSE) + 0.5 * pweibull(x, 4, 10, lower.tail = FALSE)}.
+Its 75th percentile is approximately 9.12444. The parameters provide high
+probability of a maximum finite endpoint beyond this percentile for
+\code{n = 200} or \code{500} and \code{q = 0.3} or \code{0.5}. This is not guaranteed for every
+seed; datasets are neither rejected nor altered to force tail coverage.
 }
+\section{Simulation truth}{
+
+All data generators attach two scalar attributes: \code{attr(d, "tau")} is the
+largest finite endpoint among \code{L} and \code{R}, and \code{attr(d, "true_S_tau")} is
+the true population survival probability at that time. These are computed
+for the generated dataset, not estimated from it.
+
+\code{attr(d, "censoring_proportions")} is a named numeric vector in the order
+\code{Exact}, \code{Left}, \code{Interval}, \code{Right}, containing the observed proportions
+of each type. Classification uses only \code{L} and \code{R}: exact events have
+finite \code{L == R}; left censoring has \verb{L == 0 < R < Inf}; finite intervals
+have \verb{0 < L < R < Inf}; right censoring has \code{R == Inf}, including \verb{(0, Inf)}.
+These mutually exclusive proportions sum to one for a nonempty dataset.
+
+The attributes do not add columns or change observations. Subsetting or
+modifying the data does not recompute them; recalculate them for the
+modified dataset.
+}
+
 \examples{
 right <- data_mixture(seed = 123, n = 100, type = "right", q = 0.3)
 interval <- data_mixture(seed = 123, n = 100, type = "interval", q = 0.3)
 current <- data_mixture(seed = 123, n = 100, type = "current", q = 0.3)
 head(interval)
+c(tau = attr(interval, "tau"), true_S_tau = attr(interval, "true_S_tau"))
+attr(interval, "censoring_proportions")
 }
 \seealso{
 \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{data_cs}()}

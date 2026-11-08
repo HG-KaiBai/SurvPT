@@ -56,10 +56,9 @@
 #' bound of one on a Beta parameter is active. Both tail quantities are returned.
 #'
 #' Fitting leaves the tail shape unspecified. `Tail_Prob` is the MAP estimate
-#' of `S(tau)`. Prediction adds an exponential tail whose rate is determined
-#' by this mass, or by each posterior draw's tail mass; see
-#' \code{\link{predict.survPT}()}. Unrestricted mean event time is not identified
-#' by the fit without such an extrapolation assumption.
+#' of `S(tau)`. Survival and density predictions for `t > tau`, including `Inf`,
+#' are `NA`; see \code{\link{predict.survPT}()}. Unrestricted mean event time is
+#' not identified without a tail-shape assumption.
 #' Exact events at a split belong to its left interval; zero is included in
 #' intervals starting at zero. `Posterior_Probs` remains the historical name
 #' for deterministic MAP node masses, not posterior mean masses.

@@ -50,9 +50,9 @@ compute summaries and are not retained in the returned object.
 }
 \description{
 Evaluate the fitted MAP-EM distribution and optionally sample its posterior
-at specified times. Beyond the largest finite endpoint, prediction adds an
-exponential tail with the fitted or sampled tail mass. Fitting and sampling
-of the tree continue to use an unspecified tail shape.
+at specified times. Survival and density are evaluated only up to the largest
+finite endpoint \code{Tau}; predictions beyond it are \code{NA}. The tail shape is
+unspecified.
 }
 \details{
 \code{estimate} is the fitted MAP-EM plug-in prediction. It is not the mode of the
@@ -77,22 +77,12 @@ Intervals are equal-tailed and pointwise, conditional on the retained tree
 and fixed centering parameters. Finite chains have Monte Carlo error;
 compare summaries across independent runs and longer chains to assess stability.
 
-For \code{x > Tau}, let \code{p} be the fitted tail mass (or the tail mass of an
-individual posterior draw). Prediction chooses the exponential rate by
-requiring \code{exp(-rate * Tau) = p}, so \code{rate = -log(p)/Tau}. It evaluates
-\code{S(x) = p * exp(-rate * (x-Tau)) = p^(x/Tau)} and
-\code{f(x) = rate * S(x)}. Each posterior draw uses its own mass and rate before
-summaries are computed. Tail density integrates to \code{p}, and survival joins
-continuously at \code{Tau}; density need not be continuous there. At \code{Tau},
-density retains the body endpoint convention. At \code{Inf}, both curves are zero.
-
-This tail shape is an extrapolation assumption used only for prediction;
-it does not alter allocation, the tree, prior parameters or Gibbs sampling.
-The tail rate is determined by mass matching, not separately estimated from
-tail event times. A zero tail mass contributes zero. A tail mass of exactly
-one cannot determine a positive exponential rate and raises an error when
-extrapolating. \code{attr(result, "tail")} reports \code{S(Tau)} and its posterior
-summaries, even when \code{x} omits \code{Tau} or \code{type="density"}.
+For \code{x > Tau}, including \code{Inf}, survival and density estimates and all
+posterior summary columns are \code{NA}. No tail shape is assumed or evaluated.
+At \code{Tau}, survival equals the fitted or sampled tail mass, and density
+retains the body endpoint convention. \code{attr(result, "tail")} reports
+\code{S(Tau)} and its posterior summaries, even when \code{x} omits \code{Tau} or
+\code{type="density"}.
 }
 \examples{
 d <- data.frame(L=c(0,1,2,3), R=c(1,2,Inf,Inf))

@@ -1,5 +1,5 @@
 # Posterior survival intervals: SurvPT versus spBayesSurv MPT and TBP.
-# Run in R after installing SurvPT >= 0.4.1:
+# Run in R after installing SurvPT >= 0.4.2:
 #   source("Examples/posterior.R")
 # Dependencies: SurvPT, survival, spBayesSurv 1.1.9, ggplot2.
 # Results remain in memory. Tables are printed; no result or plot files are saved.
@@ -12,8 +12,8 @@ if (length(missing_packages)) {
   stop("Install these packages before running the example: ",
        paste(missing_packages, collapse = ", "))
 }
-if (utils::packageVersion("SurvPT") < "0.4.1") {
-  stop("Install SurvPT 0.4.1 or later, restart R, then source this example.")
+if (utils::packageVersion("SurvPT") < "0.4.2") {
+  stop("Install SurvPT 0.4.2 or later, restart R, then source this example.")
 }
 if (as.character(utils::packageVersion("spBayesSurv")) != "1.1.9") {
   stop("The baseline initialization adapter below is validated for spBayesSurv 1.1.9.")
@@ -35,8 +35,8 @@ max_EM_iter <- 2000L
 flat <- FALSE
 
 test_data <- data_rc(seed = data_seed, n = n, K = K, Lambda = Lambda, q = 0.3)
-# Optional mixture: 0.5 * Weibull(shape = 5, scale = 1) +
-#                   0.5 * Weibull(shape = 5, scale = 4.5); K/Lambda do not apply.
+# Optional mixture: 0.5 * Weibull(shape = 3, scale = 3) +
+#                   0.5 * Weibull(shape = 4, scale = 10); K/Lambda do not apply.
 # Use a build containing data_mixture(), or run devtools::load_all(".") before
 # sourcing this script. Uncomment ONE call below and the mixture truth below.
 # All three types use non-informative censoring, with q = P(C < T).
@@ -49,8 +49,8 @@ endpoints <- as.matrix(test_data[, c("L", "R")])
 x <- seq(0, max(endpoints[is.finite(endpoints)]), length.out = 201L)
 true_survival <- stats::pweibull(x, shape = K, scale = 1/Lambda, lower.tail = FALSE)
 # Matching truth for data_mixture(): uncomment both continuation lines.
-# true_survival <- 0.5 * stats::pweibull(x, 5, 1, lower.tail = FALSE) +
-#                  0.5 * stats::pweibull(x, 5, 4.5, lower.tail = FALSE)
+# true_survival <- 0.5 * stats::pweibull(x, 3, 3, lower.tail = FALSE) +
+#                  0.5 * stats::pweibull(x, 4, 10, lower.tail = FALSE)
 
 source("Examples/bayes_helpers.R", local = TRUE)
 

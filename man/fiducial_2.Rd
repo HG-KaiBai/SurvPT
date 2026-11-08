@@ -22,6 +22,25 @@ Event times have a gamma distribution with shape 3 and rate 1. Independent
 inspection times are uniform on \verb{(0, 5)}. Only current status is observed.
 This function generates data; it does not fit a fiducial estimator.
 }
+\section{Simulation truth}{
+
+All data generators attach two scalar attributes: \code{attr(d, "tau")} is the
+largest finite endpoint among \code{L} and \code{R}, and \code{attr(d, "true_S_tau")} is
+the true population survival probability at that time. These are computed
+for the generated dataset, not estimated from it.
+
+\code{attr(d, "censoring_proportions")} is a named numeric vector in the order
+\code{Exact}, \code{Left}, \code{Interval}, \code{Right}, containing the observed proportions
+of each type. Classification uses only \code{L} and \code{R}: exact events have
+finite \code{L == R}; left censoring has \verb{L == 0 < R < Inf}; finite intervals
+have \verb{0 < L < R < Inf}; right censoring has \code{R == Inf}, including \verb{(0, Inf)}.
+These mutually exclusive proportions sum to one for a nonempty dataset.
+
+The attributes do not add columns or change observations. Subsetting or
+modifying the data does not recompute them; recalculate them for the
+modified dataset.
+}
+
 \examples{
 head(fiducial_2(t = 123, n = 20))
 }

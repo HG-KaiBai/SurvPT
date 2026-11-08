@@ -1,3 +1,20 @@
+# Attach simulation summaries without changing columns or RNG state.
+with_simulation_truth <- function(data, survival, ...) {
+  endpoints <- c(data$L, data$R)
+  finite_endpoints <- endpoints[is.finite(endpoints)]
+  tau <- if (length(finite_endpoints)) max(finite_endpoints) else NA_real_
+  attr(data, "tau") <- tau
+  attr(data, "true_S_tau") <- survival(tau, ...)
+  finite_right <- is.finite(data$R)
+  attr(data, "censoring_proportions") <- c(
+    Exact = mean(finite_right & data$L == data$R),
+    Left = mean(finite_right & data$L == 0 & data$L < data$R),
+    Interval = mean(finite_right & data$L > 0 & data$L < data$R),
+    Right = mean(is.infinite(data$R))
+  )
+  data
+}
+
 #' Simulate right-censored Weibull event times
 #'
 #' Generate independent Weibull event and censoring times with a common shape.
@@ -17,6 +34,22 @@
 #' @return A data frame with `n` rows and columns `L` (observed follow-up time),
 #'   `R` (equal to `L` for an exact event and `Inf` for right censoring), and
 #'   `status` (`1` for an exact event, `0` for right censoring).
+#' @section Simulation truth:
+#'   All data generators attach two scalar attributes: `attr(d, "tau")` is the
+#'   largest finite endpoint among `L` and `R`, and `attr(d, "true_S_tau")` is
+#'   the true population survival probability at that time. These are computed
+#'   for the generated dataset, not estimated from it.
+#'
+#'   `attr(d, "censoring_proportions")` is a named numeric vector in the order
+#'   `Exact`, `Left`, `Interval`, `Right`, containing the observed proportions
+#'   of each type. Classification uses only `L` and `R`: exact events have
+#'   finite `L == R`; left censoring has `L == 0 < R < Inf`; finite intervals
+#'   have `0 < L < R < Inf`; right censoring has `R == Inf`, including `(0, Inf)`.
+#'   These mutually exclusive proportions sum to one for a nonempty dataset.
+#'
+#'   The attributes do not add columns or change observations. Subsetting or
+#'   modifying the data does not recompute them; recalculate them for the
+#'   modified dataset.
 #' @seealso \code{\link{data_ic}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 #' @export
 #'
@@ -24,6 +57,8 @@
 #' d <- data_rc(seed = 123, n = 20, K = 2, Lambda = 0.4, q = 0.3)
 #' head(d)
 #' mean(d$status == 0)
+#' c(tau = attr(d, "tau"), true_S_tau = attr(d, "true_S_tau"))
+#' attr(d, "censoring_proportions")
 data_rc <- function(seed, n, K, Lambda, q = 0.3){
   death = c()
   censor = c()
@@ -36,7 +71,9 @@ data_rc <- function(seed, n, K, Lambda, q = 0.3){
   R = rep(Inf, n)
   R[delta == 1] = observed[delta==1]
   data = data.frame(L = observed, R = R, status = delta)
-  return(data)
+  return(with_simulation_truth(data, stats::pweibull,
+                               shape = K, scale = 1 / Lambda,
+                               lower.tail = FALSE))
 }
 
 #' Simulate interval-censored Weibull event times
@@ -48,13 +85,14 @@ data_rc <- function(seed, n, K, Lambda, q = 0.3){
 #' @details Event and censoring distributions are as in \code{\link{data_rc}()}. For events
 #'   before censoring, the inspection count is drawn with
 #'   `rnbinom(1, size = 3, prob = 0.25)` and inspections are uniform before the
-#'   censoring time. The legacy loop uses `1:Ri`; when `Ri` is zero this executes
-#'   two iterations rather than none. This behavior is retained and should be
-#'   considered when interpreting simulation results.
+#'   censoring time, with a final inspection at the censoring time. A zero count
+#'   leaves only that final inspection, giving `(0, C]` for an event before
+#'   censoring; events at or after `C` are right-censored as `(C, Inf)`.
 #' @return A data frame with `L`, `R`, and `status`. Right-censored rows have
 #'   `R = Inf`; finite intervals bracket the event time. `status` tests `L == R`
 #'   and does not indicate whether the event occurred before censoring. Pass
 #'   `L` and `R` to \code{\link{survPT}()}.
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{data_rc}()}, \code{\link{data_cs}()}, \code{\link{survPT}()}
 #' @export
 #'
@@ -74,7 +112,7 @@ data_ic <- function(seed, n, K, Lambda, q = 0.3){
       Ri =  rnbinom(1, 3, 1/(1+3))
       s_lb = 0
       s_rb = Censor[s]
-      for (i in 1:Ri){
+      for (i in seq_len(Ri)){
         t = runif(1, 0, tau)
         if (t < Time[s] && t > s_lb){
           s_lb = t
@@ -92,7 +130,9 @@ data_ic <- function(seed, n, K, Lambda, q = 0.3){
   data = data.frame(cbind(lb, rb))
   colnames(data) = c("L", "R")
   data$status = ifelse(data$L == data$R, 1, 0)
-  return(data)
+  return(with_simulation_truth(data, stats::pweibull,
+                               shape = K, scale = 1 / Lambda,
+                               lower.tail = FALSE))
 }
 
 
@@ -110,6 +150,7 @@ data_ic <- function(seed, n, K, Lambda, q = 0.3){
 #' @return A data frame with columns, in order, `L`, `R`, `time`, and `status`.
 #'   If the event precedes inspection, the interval is `(0, time]`; otherwise
 #'   it is `(time, Inf)`. See Details for the legacy `status` behavior.
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{survPT}()}
 #' @export
 #'
@@ -128,7 +169,9 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
   data = data.frame(L = lb, R = rb, time = C, status = delta)
   colnames(data) = c("L", "R", "time", "status")
   data$status = ifelse(data$L == data$R, 1, 0)
-  return(data)
+  return(with_simulation_truth(data, stats::pweibull,
+                               shape = K, scale = 1 / Lambda,
+                               lower.tail = FALSE))
 }
 
 
@@ -136,16 +179,17 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
 #' Simulate a Weibull mixture with non-informative censoring
 #'
 #' Generate event times with density
-#' `0.5 * dweibull(x, 5, 1) + 0.5 * dweibull(x, 5, 4.5)` under right,
+#' `0.5 * dweibull(x, 3, 3) + 0.5 * dweibull(x, 4, 10)` under right,
 #' interval, or current-status censoring. Censoring and inspection schedules
 #' are independent of the event time and its mixture component.
 #'
 #' @inheritParams data_rc
 #' @param type Censoring type: `"right"`, `"interval"`, or `"current"`.
-#' @details Each event independently selects Weibull scale 1 or 4.5 with equal
-#'   probability; both components have shape 5. Independent censoring times
-#'   have Weibull shape 5 and a common scale `c`, chosen to satisfy
-#'   `0.5 / (1 + c^5) + 0.5 / (1 + (c / 4.5)^5) = q`.
+#' @details Each event independently selects Weibull `(shape = 3, scale = 3)`
+#'   or `(shape = 4, scale = 10)` with equal probability. The mixture density
+#'   has modes near 2.645 and 9.306. Independent censoring times are uniform on `(0, c)`,
+#'   where `c` is calibrated so that the average of the true survival function
+#'   over `(0, c)` equals `q`.
 #'   Thus `q = P(C < T)` is the probability of a right-open interval for all
 #'   three types, not the total probability of a non-exact observation.
 #'
@@ -156,14 +200,19 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
 #'   the only inspection is at `C`.
 #'
 #'   The true survival function is
-#'   `0.5 * pweibull(x, 5, 1, lower.tail = FALSE) +
-#'   0.5 * pweibull(x, 5, 4.5, lower.tail = FALSE)`.
+#'   `0.5 * pweibull(x, 3, 3, lower.tail = FALSE) +
+#'   0.5 * pweibull(x, 4, 10, lower.tail = FALSE)`.
+#'   Its 75th percentile is approximately 9.12444. The parameters provide high
+#'   probability of a maximum finite endpoint beyond this percentile for
+#'   `n = 200` or `500` and `q = 0.3` or `0.5`. This is not guaranteed for every
+#'   seed; datasets are neither rejected nor altered to force tail coverage.
 #' @return A data frame with `n` rows and columns `L`, `R`, and `status`.
 #'   `status` is the exact-event indicator `as.numeric(L == R)` and is zero
 #'   for interval and current-status observations. Right-open intervals have
 #'   `R = Inf`. Current-status output also includes `time`, the inspection
 #'   time, before `status`; its event-by-inspection indicator is
 #'   `as.integer(is.finite(R))`. Fit all types using `L` and `R`.
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{data_cs}()}
 #' @export
 #'
@@ -172,6 +221,8 @@ data_cs <- function(seed, n, K, Lambda, q = 0.3){
 #' interval <- data_mixture(seed = 123, n = 100, type = "interval", q = 0.3)
 #' current <- data_mixture(seed = 123, n = 100, type = "current", q = 0.3)
 #' head(interval)
+#' c(tau = attr(interval, "tau"), true_S_tau = attr(interval, "true_S_tau"))
+#' attr(interval, "censoring_proportions")
 data_mixture <- function(seed, n, type = c("right", "interval", "current"),
                          q = 0.3) {
   type <- match.arg(type)
@@ -183,24 +234,41 @@ data_mixture <- function(seed, n, type = c("right", "interval", "current"),
     stop("q must be a number strictly between 0 and 1.")
   }
 
-  scales <- c(1, 4.5)
-  # Solve on the log scale to avoid overflow for extreme censoring targets.
-  log_scale_bounds <- log(scales) + (log1p(-q) - log(q)) / 5
-  log_censor_scale <- stats::uniroot(function(log_scale) {
-    mean(stats::plogis(5 * (log(scales) - log_scale))) - q
-  }, interval = log_scale_bounds, tol = 1e-10)$root
+  # Fixed 50/50 Weibull mixture
+  shapes <- c(3, 4)
+  scales <- c(3, 10)
+
+  # Calibrate C ~ Uniform(0, c) such that P(T > C) = q
+  censor_rate <- function(c) {
+    mean(
+      scales * gamma(1 + 1 / shapes) *
+        stats::pgamma((c / scales)^shapes, shape = 1 / shapes)
+    ) / c
+  }
+
+  upper <- 1
+  while (censor_rate(upper) > q) {
+    upper <- 2 * upper
+  }
+
+  c_max <- stats::uniroot(
+    function(c) censor_rate(c) - q,
+    interval = c(1e-8, upper),
+    tol = 1e-10
+  )$root
 
   set.seed(seed)
-  event_scale <- sample(scales, n, replace = TRUE)
-  T <- rweibull(n, shape = 5, scale = event_scale)
-  C <- rweibull(n, shape = 5, scale = exp(log_censor_scale))
+  component <- sample.int(2L, n, replace = TRUE)
+  T <- rweibull(n, shape = shapes[component],
+                scale = scales[component])
+  C <- runif(n, min = 0, max = c_max)
 
   if (type == "right") {
     L <- pmin(T, C)
-    R <- ifelse(T < C, T, Inf)
+    R <- ifelse(T <= C, T, Inf)
   } else if (type == "current") {
-    L <- ifelse(T < C, 0, C)
-    R <- ifelse(T < C, C, Inf)
+    L <- ifelse(T <= C, 0, C)
+    R <- ifelse(T <= C, C, Inf)
   } else {
     L <- numeric(n)
     R <- rep(Inf, n)
@@ -216,9 +284,13 @@ data_mixture <- function(seed, n, type = c("right", "interval", "current"),
   }
 
   if (type == "current") {
-    return(data.frame(L = L, R = R, time = C, status = as.numeric(L == R)))
+    data <- data.frame(L = L, R = R, time = C, status = as.numeric(L == R))
+  } else {
+    data <- data.frame(L = L, R = R, status = as.numeric(L == R))
   }
-  data.frame(L = L, R = R, status = as.numeric(L == R))
+  with_simulation_truth(data, function(tau) {
+    mean(stats::pweibull(tau, shape = shapes, scale = scales, lower.tail = FALSE))
+  })
 }
 
 
@@ -234,6 +306,7 @@ data_mixture <- function(seed, n, type = c("right", "interval", "current"),
 #' @return A data frame with `n` rows and columns `L` and `R`, suitable for
 #'   \code{\link{survPT}()}. Infinite right endpoints indicate right-open observation
 #'   intervals, not an exact event at infinity.
+#' @inheritSection data_rc Simulation truth
 #' @references
 #' Cui, Y., Hannig, J., and Kosorok, M. R. (2024).
 #' A Unified Nonparametric Fiducial Approach to Interval-Censored Data.
@@ -243,7 +316,9 @@ data_mixture <- function(seed, n, type = c("right", "interval", "current"),
 #' @export
 #'
 #' @examples
-#' head(fiducial_1(t = 123, n = 20))
+#' d <- fiducial_1(t = 123, n = 20)
+#' head(d)
+#' c(tau = attr(d, "tau"), true_S_tau = attr(d, "true_S_tau"))
 fiducial_1 <- function(t, n){
   set.seed(t)
   T = rexp(n, rate = 1)
@@ -253,7 +328,7 @@ fiducial_1 <- function(t, n){
   r = ifelse(delta == 1, C, Inf)
   data = data.frame(L = l, R = r)
   colnames(data) = c("L", "R")
-  return(data)
+  return(with_simulation_truth(data, stats::pexp, rate = 1, lower.tail = FALSE))
 }
 
 #' Generate fiducial-comparison scenario 2: gamma current status
@@ -264,6 +339,7 @@ fiducial_1 <- function(t, n){
 #'
 #' @inheritParams fiducial_1
 #' @inherit fiducial_1 return references
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_3}()}, \code{\link{fiducial_4}()}
 #' @export
 #'
@@ -278,7 +354,8 @@ fiducial_2 <- function(t, n){
   r = ifelse(delta == 1, C, Inf)
   data = data.frame(L = l, R = r)
   colnames(data) = c("L", "R")
-  return(data)
+  return(with_simulation_truth(data, stats::pgamma,
+                               shape = 3, rate = 1, lower.tail = FALSE))
 }
 
 #' Generate fiducial-comparison scenario 3: two inspection times
@@ -290,6 +367,7 @@ fiducial_2 <- function(t, n){
 #'
 #' @inheritParams fiducial_1
 #' @inherit fiducial_1 return references
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_2}()}, \code{\link{fiducial_4}()}
 #' @export
 #'
@@ -304,7 +382,8 @@ fiducial_3 <- function(t, n){
   rb = ifelse(T < C1, C1, ifelse(T >= C2, Inf, C2))
   data = data.frame(L = lb, R = rb)
   colnames(data) = c("L", "R")
-  return(data)
+  return(with_simulation_truth(data, stats::pgamma,
+                               shape = 2, rate = 1, lower.tail = FALSE))
 }
 
 #' Generate fiducial-comparison scenario 4: random inspection counts
@@ -317,6 +396,7 @@ fiducial_3 <- function(t, n){
 #'
 #' @inheritParams fiducial_1
 #' @inherit fiducial_1 return references
+#' @inheritSection data_rc Simulation truth
 #' @seealso \code{\link{fiducial_1}()}, \code{\link{fiducial_2}()}, \code{\link{fiducial_3}()}
 #' @export
 #'
@@ -344,7 +424,7 @@ fiducial_4 <- function(t, n){
   }
   data = data.frame(L = bounds[,1], R = bounds[,2])
   colnames(data) = c("L", "R")
-  return(data)
+  return(with_simulation_truth(data, stats::pexp, rate = 1, lower.tail = FALSE))
 }
 
 

@@ -17,8 +17,8 @@
 #' SurvPT is distributed under the MIT license. It provides deterministic
 #' MAP-EM fits and optional DA-Gibbs posterior means and pointwise credible
 #' intervals. Fitting represents the tail only by its probability mass for
-#' every body centering family. Prediction adds an exponential tail beyond
-#' the observed range, matching each fitted or sampled tail probability.
+#' every body centering family. Survival and density predictions beyond the
+#' largest finite endpoint are `NA`, including their posterior summaries.
 #'
 #' @seealso \code{\link{survPT}()}, \code{\link{estimate}()}, \code{\link{estimate_exp}()},
 #'   \code{\link{data_rc}()}, \code{\link{data_ic}()}, \code{\link{data_cs}()}

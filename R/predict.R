@@ -1,9 +1,9 @@
 #' Predict from a fitted Polya tree with posterior uncertainty
 #'
 #' Evaluate the fitted MAP-EM distribution and optionally sample its posterior
-#' at specified times. Beyond the largest finite endpoint, prediction adds an
-#' exponential tail with the fitted or sampled tail mass. Fitting and sampling
-#' of the tree continue to use an unspecified tail shape.
+#' at specified times. Survival and density are evaluated only up to the largest
+#' finite endpoint `Tau`; predictions beyond it are `NA`. The tail shape is
+#' unspecified.
 #'
 #' @param object A fitted model returned by \code{\link{survPT}()}.
 #' @param x Numeric vector of nonnegative evaluation times, in any order.
@@ -42,22 +42,12 @@
 #' and fixed centering parameters. Finite chains have Monte Carlo error;
 #' compare summaries across independent runs and longer chains to assess stability.
 #'
-#' For `x > Tau`, let `p` be the fitted tail mass (or the tail mass of an
-#' individual posterior draw). Prediction chooses the exponential rate by
-#' requiring `exp(-rate * Tau) = p`, so `rate = -log(p)/Tau`. It evaluates
-#' `S(x) = p * exp(-rate * (x-Tau)) = p^(x/Tau)` and
-#' `f(x) = rate * S(x)`. Each posterior draw uses its own mass and rate before
-#' summaries are computed. Tail density integrates to `p`, and survival joins
-#' continuously at `Tau`; density need not be continuous there. At `Tau`,
-#' density retains the body endpoint convention. At `Inf`, both curves are zero.
-#'
-#' This tail shape is an extrapolation assumption used only for prediction;
-#' it does not alter allocation, the tree, prior parameters or Gibbs sampling.
-#' The tail rate is determined by mass matching, not separately estimated from
-#' tail event times. A zero tail mass contributes zero. A tail mass of exactly
-#' one cannot determine a positive exponential rate and raises an error when
-#' extrapolating. `attr(result, "tail")` reports `S(Tau)` and its posterior
-#' summaries, even when `x` omits `Tau` or `type="density"`.
+#' For `x > Tau`, including `Inf`, survival and density estimates and all
+#' posterior summary columns are `NA`. No tail shape is assumed or evaluated.
+#' At `Tau`, survival equals the fitted or sampled tail mass, and density
+#' retains the body endpoint convention. `attr(result, "tail")` reports
+#' `S(Tau)` and its posterior summaries, even when `x` omits `Tau` or
+#' `type="density"`.
 #'
 #' @return A data frame with columns `x`, `estimate`, `lower`, `upper`, `mean`
 #'   and `median`, preserving the order of `x`. Without sampling, only `x` and
@@ -104,16 +94,11 @@ predict.survPT <- function(object, x, level = 0.95, sample = TRUE,
     }
     out <- SurvPTPredict(object$Model, as.numeric(x), leaf_draws)
     estimate <- if (type == 'survival') out$survival_probs else out$density_probs
-    beyond <- x > object$Tau
-    if (any(beyond)) estimate[beyond] <- pt_exponential_tail(
-        object$Tail_Prob, x[beyond], object$Tau, type == 'density')
     result <- data.frame(x=x, estimate=as.numeric(estimate))
     tail <- data.frame(x=object$Tau, estimate=object$Tail_Prob)
     if (sample) {
         curve_draws <- if (type == 'survival') out$survival_draws else out$density_draws
         tail_draws <- leaf_draws[, match(object$Tail_Node, object$Terminal_Nodes)]
-        if (any(beyond)) curve_draws[, beyond] <- pt_exponential_tail(
-            tail_draws, x[beyond], object$Tau, type == 'density')
         result <- cbind(result, pt_prediction_summary(curve_draws, level))
         tail <- cbind(tail, pt_prediction_summary(matrix(tail_draws, ncol=1L), level))
         attr(result, 'level') <- level
@@ -124,24 +109,6 @@ predict.survPT <- function(object, x, level = 0.95, sample = TRUE,
     attr(result, 'type') <- type
     attr(result, 'sample') <- sample
     attr(result, 'tail') <- tail
-    result
-}
-
-# Prediction-only extension: do not use this kernel for fitting allocations.
-# Work on log scale so zero masses and extreme times do not produce Inf * 0.
-pt_exponential_tail <- function(mass, times, tau, density) {
-    if (any(!is.finite(mass)) || any(mass < 0 | mass >= 1))
-        stop('Exponential tail extrapolation requires tail probabilities in [0,1); a mass of 1 has no positive matching rate.')
-    result <- matrix(0, nrow=length(mass), ncol=length(times))
-    positive <- mass > 0
-    finite <- is.finite(times)
-    if (any(positive) && any(finite)) {
-        log_mass <- log(mass[positive])
-        log_curve <- outer(log_mass, times[finite]/tau, '*')
-        if (density) log_curve <- sweep(log_curve, 1L,
-            log(-log_mass)-log(tau), '+')
-        result[positive, finite] <- exp(log_curve)
-    }
     result
 }
 

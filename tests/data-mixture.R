@@ -30,9 +30,9 @@ for (q in c(0.1, 0.3, 0.5, 0.8)) {
 
   # With independent inspections, the event-by-inspection probability at C
   # must equal the specified mixture CDF, including within inspection bins.
-  event_prob <- 0.5 * pweibull(current$time, 5, 1) +
-                0.5 * pweibull(current$time, 5, 4.5)
-  bins <- cut(current$time, c(0, 1, 2, 4, 5, Inf))
+  event_prob <- 0.5 * pweibull(current$time, 3, 3) +
+                0.5 * pweibull(current$time, 4, 10)
+  bins <- cut(current$time, c(0, 2, 4, 6, 8, 10, Inf))
   for (bin in levels(bins)) {
     take <- bins == bin
     residual <- sum(exact[take] - event_prob[take])
@@ -44,8 +44,8 @@ for (q in c(0.1, 0.3, 0.5, 0.8)) {
 # Almost uncensored samples should follow the mixture, not an average of
 # Weibull draws or a single Weibull with the average component scale.
 d <- data_mixture(739, 100000, "right", q = 1e-10)
-for (x in c(0.8, 1.2, 3, 4.5, 5)) {
-  prob <- 0.5 * pweibull(x, 5, 1) + 0.5 * pweibull(x, 5, 4.5)
+for (x in c(2, 4, 6, 8, 10, 12)) {
+  prob <- 0.5 * pweibull(x, 3, 3) + 0.5 * pweibull(x, 4, 10)
   stopifnot(abs(mean(d$L <= x) - prob) < 6 * sqrt(prob * (1 - prob) / nrow(d)))
 }
 
@@ -59,4 +59,42 @@ for (q in list(0, 1, -0.1, 1.1, NA_real_, Inf, numeric(), c(0.2, 0.3), "0.3")) {
   stopifnot(errors(123, 10, q = q))
 }
 stopifnot(errors(123, 10, type = "unknown"))
+
+# The underlying density retains two peaks separated by a valley.
+mixture_density <- function(x) {
+  0.5 * dweibull(x, 3, 3) + 0.5 * dweibull(x, 4, 10)
+}
+first_peak <- optimize(mixture_density, c(2, 5), maximum = TRUE)
+second_peak <- optimize(mixture_density, c(7, 10), maximum = TRUE)
+valley <- optimize(mixture_density, c(first_peak$maximum, second_peak$maximum))
+stopifnot(first_peak$maximum < valley$minimum,
+          valley$minimum < second_peak$maximum,
+          first_peak$objective > valley$objective,
+          second_peak$objective > valley$objective)
+
+# This finite-seed regression checks the requested simulation settings, not a
+# guarantee for arbitrary seeds. No failed datasets are discarded or redrawn.
+mixture_survival <- function(x) {
+  0.5 * pweibull(x, 3, 3, lower.tail = FALSE) +
+    0.5 * pweibull(x, 4, 10, lower.tail = FALSE)
+}
+target_time <- uniroot(function(x) mixture_survival(x) - 0.25,
+                       c(0, 30), tol = 1e-12)$root
+coverage_checks <- expand.grid(n = c(200L, 500L), q = c(0.3, 0.5),
+                               type = c("right", "interval", "current"),
+                               stringsAsFactors = FALSE)
+coverage_checks$failures <- integer(nrow(coverage_checks))
+coverage_checks$min_tau <- numeric(nrow(coverage_checks))
+for (j in seq_len(nrow(coverage_checks))) {
+  setting <- coverage_checks[j, ]
+  taus <- vapply(seq_len(1000L), function(seed) {
+    d <- data_mixture(seed, setting$n, setting$type, setting$q)
+    endpoints <- as.matrix(d[, c("L", "R")])
+    max(endpoints[is.finite(endpoints)])
+  }, numeric(1))
+  coverage_checks$failures[j] <- sum(taus <= target_time)
+  coverage_checks$min_tau[j] <- min(taus)
+}
+print(coverage_checks, row.names = FALSE)
+stopifnot(all(coverage_checks$failures == 0L))
 cat("Weibull mixture censoring checks passed.\n")

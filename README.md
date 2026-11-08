@@ -5,7 +5,7 @@
 [![Views](https://view-counter.tobyhagan.com/?user=USERNAME/REPO&base=555555&accent=181717&text=white&flat=true)](https://github.com/HG-KaiBai/SurvPT)
   
 
-SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates univariate survival functions from censored observations using self-consistent finite Polya trees. Version **0.4.1** uses `survPT()` for fitting and `predict()` for estimation and posterior sampling.
+SurvPT is an R package developed for an accompanying research manuscript currently in preparation. It estimates univariate survival functions from censored observations using self-consistent finite Polya trees. Version **0.4.2** uses `survPT()` for fitting and `predict()` for estimation and posterior sampling.
 
 The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) under the [MIT license](LICENSE.md).
 
@@ -17,7 +17,7 @@ The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) un
 | `predict(fit, times, 0.95)` | Fitted model and a numeric vector of target times | MAP survival predictions plus posterior means and pointwise credible intervals; runs sampling during prediction by default |
 | `estimate()`, `estimate_exp()` | Left and right endpoints | Parametric Weibull and exponential maximum-likelihood estimates, useful for choosing PT base parameters |
 
-Start with `survPT()` and encode each observation as a pair of interval endpoints. Choose a uniform or exponential body center; Weibull remains available as an extension. Fitting estimates only the total probability beyond the largest finite endpoint `Tau`. Prediction adds an exponential tail with rate `-log(p)/Tau`, where `p` is the fitted or individual posterior tail mass. For `x > Tau`, survival is `p^(x/Tau)`; at `Inf` it is zero. See [Methods](docs/methods.md) for the reference prior and the two fitting algorithms.
+Start with `survPT()` and encode each observation as a pair of interval endpoints. Choose a uniform or exponential body center; Weibull remains available as an extension. Fitting estimates only the total probability beyond the largest finite endpoint `Tau`. For `x > Tau`, including `Inf`, survival and density predictions and their posterior summaries are `NA`. At `Tau`, survival equals the fitted or sampled tail mass. See [Methods](docs/methods.md) for the reference prior and the two fitting algorithms.
 
 ## Install from GitHub
 
@@ -70,7 +70,7 @@ pred <- predict(fit, x, 0.95) # samples now, then evaluates at exactly x
 pred                        # x, estimate, lower, upper, mean, median
 attr(pred, "tail")           # fitted and posterior summaries of S(tau)
 predict(fit, c(fit$Tau, 2*fit$Tau, Inf), sample=FALSE)
-# Tail estimates: p, p^2, 0, where p = fit$Tail_Prob.
+# Estimates: fit$Tail_Prob, NA, NA.
 
 # Defaults: 2000 posterior draws after 3000 burn-in sweeps.
 # Only curve and tail summaries are returned; raw draws are not retained.

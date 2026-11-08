@@ -35,10 +35,29 @@ inspections before censoring. Observations are returned as interval endpoints.
 Event and censoring distributions are as in \code{\link{data_rc}()}. For events
 before censoring, the inspection count is drawn with
 \code{rnbinom(1, size = 3, prob = 0.25)} and inspections are uniform before the
-censoring time. The legacy loop uses \code{1:Ri}; when \code{Ri} is zero this executes
-two iterations rather than none. This behavior is retained and should be
-considered when interpreting simulation results.
+censoring time, with a final inspection at the censoring time. A zero count
+leaves only that final inspection, giving \verb{(0, C]} for an event before
+censoring; events at or after \code{C} are right-censored as \verb{(C, Inf)}.
 }
+\section{Simulation truth}{
+
+All data generators attach two scalar attributes: \code{attr(d, "tau")} is the
+largest finite endpoint among \code{L} and \code{R}, and \code{attr(d, "true_S_tau")} is
+the true population survival probability at that time. These are computed
+for the generated dataset, not estimated from it.
+
+\code{attr(d, "censoring_proportions")} is a named numeric vector in the order
+\code{Exact}, \code{Left}, \code{Interval}, \code{Right}, containing the observed proportions
+of each type. Classification uses only \code{L} and \code{R}: exact events have
+finite \code{L == R}; left censoring has \verb{L == 0 < R < Inf}; finite intervals
+have \verb{0 < L < R < Inf}; right censoring has \code{R == Inf}, including \verb{(0, Inf)}.
+These mutually exclusive proportions sum to one for a nonempty dataset.
+
+The attributes do not add columns or change observations. Subsetting or
+modifying the data does not recompute them; recalculate them for the
+modified dataset.
+}
+
 \examples{
 d <- data_ic(seed = 123, n = 20, K = 1.5, Lambda = 0.4, q = 0.3)
 head(d[, c("L", "R")])

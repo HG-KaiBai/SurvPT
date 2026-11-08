@@ -26,11 +26,11 @@ For reproducibility, pass an existing commit SHA with `ref = "YOUR_COMMIT_SHA"`.
 
 ## Install a local source archive
 
-If you have a source archive such as `SurvPT_0.4.1.tar.gz`, set the R working directory to its location or supply an absolute path:
+If you have a source archive such as `SurvPT_0.4.2.tar.gz`, set the R working directory to its location or supply an absolute path:
 
 ```r
 install.packages(c("Rcpp", "RcppArmadillo"))
-install.packages("SurvPT_0.4.1.tar.gz", repos = NULL, type = "source")
+install.packages("SurvPT_0.4.2.tar.gz", repos = NULL, type = "source")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -39,12 +39,12 @@ packageVersion("SurvPT")
 
 ## Install the Windows binary
 
-The `SurvPT_0.4.1.zip` binary is built with R 4.5.1 for Windows x64. With R 4.5.x,
+The `SurvPT_0.4.2.zip` binary is built with R 4.5.1 for Windows x64. With R 4.5.x,
 set the working directory to the archive's location and install it directly:
 
 ```r
 install.packages("Rcpp")
-install.packages("SurvPT_0.4.1.zip", repos = NULL, type = "win.binary")
+install.packages("SurvPT_0.4.2.zip", repos = NULL, type = "win.binary")
 library(SurvPT)
 packageVersion("SurvPT")
 ```
@@ -78,12 +78,12 @@ Run [the quickstart](../Examples/quickstart.R) from a checkout using `Rscript Ex
 
 ## Reproducibility
 
-Version 0.4.1 uses reference-count pruning, asymmetric tail-path Beta priors,
+Version 0.4.2 uses reference-count pruning, asymmetric tail-path Beta priors,
 centering-based initialization followed by a single MAP-EM fit, and optional
 DA-Gibbs. `flat=TRUE` selects Beta(1,1) for the entire fit and sampler. All families
-leave the tail shape unspecified during fitting. Prediction extends beyond
-the largest finite endpoint with an exponential shape matched to the fitted
-or individual sampled tail mass. Curves and summaries are returned by `predict()`.
+leave the tail shape unspecified. Survival and density predictions beyond
+the largest finite endpoint, including `Inf`, are `NA`. Curves and summaries,
+including a separate summary of `S(Tau)`, are returned by `predict()`.
 `survPT()` accepts only fitting parameters; use
 `predict(fit,times,0.95)` to sample and predict at target times. Refit earlier analyses when adopting these changes;
 see [Methods](methods.md) and [NEWS](../NEWS.md).
