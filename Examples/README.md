@@ -3,7 +3,7 @@
 Run examples from the repository root in R. They use the 0.2.3 fit/predict
 workflow with the 0.4.0 reference tree, alpha parameters and unspecified tail.
 Results stay as R objects. Tables print in the console; plots display only
-in interactive sessions. No result, workspace or image files are saved.
+in interactive sessions. No result, workspace or image files are saved by default.
 
 ```r
 # Load this checkout, or load an installed build with library(SurvPT).
@@ -52,6 +52,30 @@ MAP probability bound is `1e-6 * 2^(-m)`; posterior draws are unrestricted.
   TBP. It preserves the locally selected simulation and truth settings. Requires
   `devtools`, `interval` and `spBayesSurv` 1.1.9. PT curves and density predictions
   use separate `predict()` calls. `plot_comparison()` displays the plots in R.
+- `tandmobALL.R` compares SurvPT (exponential center), fiducial, MPT and TBP
+  for teeth 14, 24, 34 and 44 in boys and girls from `icensBKL::tandmobAll`. Requires `icensBKL`,
+  `survival`, `spBayesSurv` 1.1.9, `ggplot2`, `pracma` and `quadprog`.
+  Missing left/right endpoints encode left/right censoring; records with both
+  endpoints missing are excluded and counted. Each method samples its own
+  distribution and reports pointwise 95% survival intervals; Fiducial uses
+  fiducial intervals, not Bayesian credible intervals. Objects:
+  `tandmob_results`, `survival_intervals`, `sampling_settings`, `runtime_summary`, `runtime_by_tooth`,
+  `comparison_plot`. Reuse `fit_tandmob_group(data, group)` for one L/R data frame,
+  or `compare_tandmob(boy, girl, tooth = 14)` for both groups of one tooth.
+  `analyze_tandmob(tandmobAll, teeth = c(14, 24, 34, 44))` runs all selected teeth.
+  One figure contains a panel per tooth; both groups and all four methods share
+  each panel: solid estimates, same-color dashed interval bounds, and
+  circle/triangle markers for boy/girl. Runtime includes fitting, sampling and
+  interval calculation, including MPT/TBP initialization, but excludes plotting.
+  `runtime_by_tooth$mean_seconds` averages boy and girl within each tooth;
+  `runtime_summary$mean_seconds` averages all tooth/group runs per method with
+  equal weight (eight runs for four teeth). Runs execute sequentially.
+  Completed teeth can be passed explicitly through `existing_results`, or set
+  `options(SurvPT.tandmob_existing = list("44" = completed_tooth_44))` before sourcing;
+  their recorded seeds and elapsed times are retained. To export the PNG plot, CSV tables and
+  RDS results, set
+  `options(SurvPT.tandmob_output_dir = "output/tandmobALL")` before sourcing.
+  Each newly completed tooth is also saved as `tooth_<number>.rds` for reuse.
 - `Data Analysis.R` contains the treatment-group analysis and bootstrap comparison.
   The second group assignment selects the light group. Requires `devtools`,
   `interval`, `parallel`, `ggplot2`, `pracma` and `quadprog`. Results remain in
