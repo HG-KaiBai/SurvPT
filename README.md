@@ -9,6 +9,8 @@ SurvPT is an R package developed for an accompanying research manuscript current
 
 The source code is available on [GitHub](https://github.com/HG-KaiBai/SurvPT) under the [MIT license](LICENSE.md).
 
+The companion [SCPT_simu](https://github.com/HG-KaiBai/SCPT_simu) repository contains the simulation study, timing benchmarks, and data-analysis code and results for SurvPT.
+
 ## Fit with SurvPT
 
 | Function | Input | Model and scope |
